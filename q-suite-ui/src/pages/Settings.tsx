@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SettingsIcon } from 'lucide-react';
-import { SUITE_NAME } from '../constants/brand';
+import { SUITE_NAME, DEFAULT_DOCUMENT_TITLE, TITLE_SETTINGS } from '../constants/brand';
 import { Card } from '../components/ui/Card';
 
 export function Settings() {
+  useEffect(() => {
+    document.title = TITLE_SETTINGS;
+    return () => { document.title = DEFAULT_DOCUMENT_TITLE; };
+  }, []);
   return (
     <div className="p-6 max-w-2xl">
       <h1 className="text-h1 text-text-primary mb-6">Settings</h1>

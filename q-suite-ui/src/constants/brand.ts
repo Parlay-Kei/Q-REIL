@@ -15,10 +15,20 @@ export const CONTROL_CENTER_NAME = 'Q Control Center';
 export const REIL_APP_NAME = 'Q REIL';
 export const REIL_APP_DESCRIPTION = 'Commercial Real Estate package';
 
-/** Route-aware document title fragments */
+/** Route-aware document title fragments — single source for tab titles. */
 export const TITLE_HOME = SUITE_NAME;
 export const TITLE_CONTROL_CENTER = `${CONTROL_CENTER_NAME} | ${SUITE_NAME}`;
+export const TITLE_APPS = `Apps | ${SUITE_NAME}`;
+export const TITLE_SETTINGS = `Settings | ${SUITE_NAME}`;
 export const TITLE_REIL_OVERVIEW = `Q REIL · Overview | ${SUITE_NAME}`;
 export const TITLE_REIL_SUBVIEW = (subview: string) => `${subview} | Q REIL | ${SUITE_NAME}`;
 export const TITLE_REIL_DEAL = (dealName: string) => `${dealName} | Q REIL | ${SUITE_NAME}`;
 export const TITLE_REIL_THREAD = `Thread | Q REIL | ${SUITE_NAME}`;
+
+/**
+ * Route → document.title mapping (each route sets title in page useEffect).
+ * / → TITLE_HOME | /dashboard → TITLE_CONTROL_CENTER | /apps → TITLE_APPS | /settings → TITLE_SETTINGS
+ * /reil → TITLE_REIL_OVERVIEW | /reil/inbox → TITLE_REIL_SUBVIEW('Inbox') | …/inbox/:id → TITLE_REIL_THREAD
+ * /reil/records, /reil/deals → TITLE_REIL_SUBVIEW(pageLabel) | /reil/deals/:id → TITLE_REIL_DEAL(dealName)
+ * /reil/documents → TITLE_REIL_SUBVIEW('Documents') | /reil/ledger → TITLE_REIL_SUBVIEW('Ledger')
+ */
