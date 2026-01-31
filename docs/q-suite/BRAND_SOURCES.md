@@ -10,7 +10,7 @@
 
 | File | Role |
 |------|------|
-| **q-suite-ui/src/constants/brand.ts** | Canonical constants: SUITE_NAME, SUITE_BYLINE, DEFAULT_DOCUMENT_TITLE, REIL_APP_NAME, REIL_APP_DESCRIPTION, TITLE_* helpers |
+| **q-suite-ui/src/constants/brand.ts** | Canonical constants: SUITE_NAME, SUITE_BYLINE, DEFAULT_DOCUMENT_TITLE, CONTROL_CENTER_NAME, REIL_APP_NAME, REIL_APP_DESCRIPTION, TITLE_* helpers |
 
 ---
 
@@ -27,7 +27,7 @@
 
 | File | What |
 |------|------|
-| **q-suite-ui/src/components/layout/Sidebar.tsx** | SUITE_NAME, SUITE_BYLINE, REIL_APP_NAME (logo, nav labels) |
+| **q-suite-ui/src/components/layout/Sidebar.tsx** | SUITE_NAME, SUITE_BYLINE, REIL_APP_NAME, CONTROL_CENTER_NAME (logo, nav labels — no hardcoded "Dashboard") |
 | **q-suite-ui/src/components/layout/CommandBar.tsx** | SUITE_NAME, REIL_APP_NAME (search placeholder) |
 | **q-suite-ui/src/components/layout/AppSwitcher.tsx** | REIL_APP_NAME, REIL_APP_DESCRIPTION (Apps tile) |
 | **q-suite-ui/src/components/layout/ReilBreadcrumb.tsx** | REIL_APP_NAME (first segment) |
@@ -36,8 +36,8 @@
 
 | File | What |
 |------|------|
-| **q-suite-ui/src/pages/Home.tsx** | TITLE_HOME, DEFAULT_DOCUMENT_TITLE, REIL_APP_NAME (app tiles), "Q Suite" hero copy |
-| **q-suite-ui/src/pages/Dashboard.tsx** | TITLE_CONTROL_CENTER, DEFAULT_DOCUMENT_TITLE |
+| **q-suite-ui/src/pages/Home.tsx** | TITLE_HOME, DEFAULT_DOCUMENT_TITLE, REIL_APP_NAME, CONTROL_CENTER_NAME (Quick Access tiles: Q REIL, Q Control Center, Apps only), "Q Suite" hero copy |
+| **q-suite-ui/src/pages/Dashboard.tsx** | TITLE_CONTROL_CENTER, CONTROL_CENTER_NAME, DEFAULT_DOCUMENT_TITLE (page heading) |
 | **q-suite-ui/src/pages/Apps.tsx** | SUITE_NAME (header copy) |
 | **q-suite-ui/src/pages/REILHome.tsx** | TITLE_REIL_OVERVIEW, DEFAULT_DOCUMENT_TITLE, REIL_APP_NAME, REIL_APP_DESCRIPTION |
 | **q-suite-ui/src/pages/Inbox.tsx** | TITLE_REIL_SUBVIEW('Inbox'), DEFAULT_DOCUMENT_TITLE |
@@ -65,4 +65,5 @@
 ## References
 
 - [NAMING_CANON.md](./NAMING_CANON.md) — Canonical product naming and route-aware titles
+- [NAV_LABELS_FINAL.md](./NAV_LABELS_FINAL.md) — Locked nav and Apps tile copy (left nav, Quick Access)
 - [TRIAGE_PLAN.md](./TRIAGE_PLAN.md) — Two-track plan (render + naming canon)

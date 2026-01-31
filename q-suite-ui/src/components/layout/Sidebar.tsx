@@ -14,7 +14,7 @@ import {
   ZapIcon,
   Box,
 } from 'lucide-react';
-import { SUITE_NAME, SUITE_BYLINE, REIL_APP_NAME } from '../../constants/brand';
+import { SUITE_NAME, SUITE_BYLINE, REIL_APP_NAME, CONTROL_CENTER_NAME } from '../../constants/brand';
 import { Tooltip } from '../ui/Tooltip';
 
 interface NavItem {
@@ -34,7 +34,7 @@ interface SidebarProps {
 
 const topNavItems: NavItem[] = [
   { id: 'home', label: 'Home', icon: HomeIcon, path: '/' },
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboardIcon, path: '/dashboard' },
+  { id: 'dashboard', label: CONTROL_CENTER_NAME, icon: LayoutDashboardIcon, path: '/dashboard' },
   { id: 'apps', label: 'Apps', icon: Box, path: '/apps' },
   { id: 'reil', label: REIL_APP_NAME, icon: ZapIcon, path: '/reil', badge: 12 },
 ];

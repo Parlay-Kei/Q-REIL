@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DEFAULT_DOCUMENT_TITLE, TITLE_CONTROL_CENTER } from '../constants/brand';
+import { DEFAULT_DOCUMENT_TITLE, TITLE_CONTROL_CENTER, CONTROL_CENTER_NAME } from '../constants/brand';
 import {
   TrendingUpIcon,
   TrendingDownIcon,
@@ -123,7 +123,7 @@ export function Dashboard() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-text-primary tracking-tight mb-2">
-          Control Center
+          {CONTROL_CENTER_NAME}
         </h1>
         <p className="text-text-secondary">
           Real-time overview of your pipeline, signals, and activity.

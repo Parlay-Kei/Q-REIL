@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DEFAULT_DOCUMENT_TITLE, REIL_APP_NAME, TITLE_HOME } from '../constants/brand';
+import { DEFAULT_DOCUMENT_TITLE, REIL_APP_NAME, CONTROL_CENTER_NAME, TITLE_HOME } from '../constants/brand';
 import {
   ArrowRightIcon,
   ZapIcon,
@@ -11,8 +11,10 @@ import {
   CheckCircleIcon,
   AlertCircleIcon,
   RefreshCwIcon,
-  TrendingUpIcon } from
-'lucide-react';
+  TrendingUpIcon,
+  LayoutDashboardIcon,
+  Box,
+} from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card, KPICard, ConnectorCard } from '../components/ui/Card';
 import { Timeline } from '../components/ui/Timeline';
@@ -66,44 +68,31 @@ const recentEvents = [
   references: ['CON-2024-0567']
 }];
 
+/** Quick Access: Q REIL, Q Control Center, Apps only (per NAV_LABELS_FINAL.md) */
 const appTiles = [
-{
-  id: 'reil',
-  name: REIL_APP_NAME,
-  icon: ZapIcon,
-  badge: 12,
-  path: '/reil',
-  color: 'from-accent-cyan to-accent-teal'
-},
-{
-  id: 'inbox',
-  name: 'Inbox',
-  icon: MailIcon,
-  badge: 5,
-  path: '/reil/inbox',
-  color: 'from-accent-violet to-accent-cyan'
-},
-{
-  id: 'deals',
-  name: 'Deals',
-  icon: BriefcaseIcon,
-  path: '/reil/deals',
-  color: 'from-warning to-danger'
-},
-{
-  id: 'documents',
-  name: 'Documents',
-  icon: FileTextIcon,
-  path: '/reil/documents',
-  color: 'from-accent-teal to-success'
-},
-{
-  id: 'ledger',
-  name: 'Ledger',
-  icon: ClockIcon,
-  path: '/reil/ledger',
-  color: 'from-accent-cyan to-accent-violet'
-}];
+  {
+    id: 'reil',
+    name: REIL_APP_NAME,
+    icon: ZapIcon,
+    badge: 12,
+    path: '/reil',
+    color: 'from-accent-cyan to-accent-teal',
+  },
+  {
+    id: 'control-center',
+    name: CONTROL_CENTER_NAME,
+    icon: LayoutDashboardIcon,
+    path: '/dashboard',
+    color: 'from-accent-violet to-accent-cyan',
+  },
+  {
+    id: 'apps',
+    name: 'Apps',
+    icon: Box,
+    path: '/apps',
+    color: 'from-accent-teal to-success',
+  },
+];
 
 export function Home() {
   const navigate = useNavigate();
