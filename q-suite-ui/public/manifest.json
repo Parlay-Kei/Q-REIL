@@ -1,0 +1,9 @@
+{
+  "name": "Q Suite by Strata Noble",
+  "short_name": "Q Suite",
+  "description": "Q Suite — unified inbox, documents, and deals. by Strata Noble.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050814",
+  "theme_color": "#0D1424"
+}

@@ -1,0 +1,5 @@
+# Do not commit tokens or local env
+.tokens.json
+.env
+.env.local
+node_modules/

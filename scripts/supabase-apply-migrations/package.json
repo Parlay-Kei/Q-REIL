@@ -1,0 +1,10 @@
+{
+  "name": "q-reil-apply-migrations",
+  "private": true,
+  "type": "module",
+  "description": "Apply Q-REIL migrations via Node+pg (no psql required)",
+  "dependencies": {
+    "pg": "^8.13.0",
+    "@supabase/supabase-js": "^2.47.10"
+  }
+}

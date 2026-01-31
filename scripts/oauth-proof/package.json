@@ -1,0 +1,14 @@
+{
+  "name": "q-reil-oauth-proof",
+  "private": true,
+  "type": "module",
+  "description": "OPS-901 Gmail OAuth proof and one-time auth for indefinite agent use",
+  "scripts": {
+    "proof": "node proof-gmail-oauth.mjs",
+    "one-time-auth": "node one-time-auth.mjs",
+    "refresh-token": "node refresh-token.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

@@ -1,0 +1,8 @@
+# MCP configuration with secrets
+.mcp.json
+
+# Claude local settings
+.claude/settings.local.json
+q-reil/
+node_modules/
+*.zip
