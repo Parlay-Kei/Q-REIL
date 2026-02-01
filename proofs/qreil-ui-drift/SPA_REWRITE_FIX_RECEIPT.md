@@ -1,6 +1,6 @@
-# SPA Rewrite Fix Receipt — QREIL-MERGE-TO-MAIN-AND-REWRITE-0008
+# SPA Rewrite Fix Receipt — QREIL-MERGE-TO-MAIN-AND-REWRITE-0008 / QREIL-MERGE-AND-SPA-REWRITE-0012
 
-**Mission:** ENG-MISSION: QREIL-MERGE-TO-MAIN-AND-REWRITE-0008  
+**Mission:** ENG-MISSION: QREIL-MERGE-TO-MAIN-AND-REWRITE-0008; ENGDEL-MISSION: QREIL-MERGE-AND-SPA-REWRITE-0012  
 **Objective:** Fix SPA deep link 404s under `/reil/*` so direct visit and refresh on `/reil/inbox` (and all `/reil/*`) load the app; assets load without 404s.  
 **Date:** 2026-02-01
 
@@ -53,14 +53,29 @@ Vercel serves files from `outputDirectory` first; only non-matching requests hit
 
 ---
 
-## 5. Build verification
+## 5. Deep link evidence (mission 0012)
+
+| Deep link | Expected | Verification |
+|-----------|----------|--------------|
+| `https://q-reil.vercel.app/reil` | SPA loads (REIL home) | Direct load and refresh return 200, app shell and client router handle route. |
+| `https://q-reil.vercel.app/reil/inbox` | SPA loads (Inbox) | Direct load and refresh return 200; no 404. |
+| `https://q-reil.vercel.app/reil/records` | SPA loads (Records) | Direct load and refresh return 200. |
+| `https://q-reil.vercel.app/reil/deals` | SPA loads (Deals) | Direct load and refresh return 200. |
+| `https://q-reil.vercel.app/reil/documents` | SPA loads (Documents) | Direct load and refresh return 200. |
+| `https://q-reil.vercel.app/reil/ledger` | SPA loads (Ledger) | Direct load and refresh return 200. |
+
+Assets (e.g. `/assets/index-*.js`) are not rewritten; they are served from `dist` and load without 404.
+
+---
+
+## 6. Build verification
 
 - **Command:** `npm run build` in `q-suite-ui`
 - **Result:** Build passed (Vite production build; `dist/index.html`, `dist/assets/*`).
 
 ---
 
-## 6. Commit / PR
+## 7. Commit / PR
 
-- Rewrite fix and this receipt are committed on `main` (or included in the merge PR if merge is done in the same PR).
+- Rewrite fix and this receipt are committed on `main` (commit 160b0a2).
 - **Files changed:** `q-suite-ui/vercel.json`, `proofs/qreil-ui-drift/SPA_REWRITE_FIX_RECEIPT.md`.
