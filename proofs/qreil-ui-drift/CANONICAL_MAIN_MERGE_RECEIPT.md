@@ -42,10 +42,22 @@ SPA rewrites were added on main in commit 160b0a2 (same mission outcome: main co
 
 ---
 
-## 4. Deliverables
+## 4. Mission 0012 PR (receipts)
+
+| Field | Value |
+|-------|--------|
+| **PR link** | https://github.com/Parlay-Kei/Q-REIL/pull/3 |
+| **Title** | QREIL-MERGE-AND-SPA-REWRITE-0012: Receipts for canonical main merge and SPA rewrite |
+| **Merge SHA** | 019e37e904aa7511affdf75a2607a0e448349ea6 |
+| **State** | Merged |
+
+---
+
+## 5. Deliverables
 
 | Deliverable | Location |
 |-------------|----------|
 | **This receipt** | `proofs/qreil-ui-drift/CANONICAL_MAIN_MERGE_RECEIPT.md` |
-| **PR link** | https://github.com/Parlay-Kei/Q-REIL/pull/2 |
+| **PR link (engdel merge)** | https://github.com/Parlay-Kei/Q-REIL/pull/2 |
+| **PR link (mission 0012)** | https://github.com/Parlay-Kei/Q-REIL/pull/3 |
 | **SPA rewrite receipt** | `proofs/qreil-ui-drift/SPA_REWRITE_FIX_RECEIPT.md` |
