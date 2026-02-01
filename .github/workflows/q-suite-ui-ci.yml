@@ -40,3 +40,10 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Basic UI smoke (preview)
+        run: |
+          npx vite preview --port 4173 &
+          sleep 5
+          curl -sf http://localhost:4173/ -o /dev/null || (pkill -f "vite preview" 2>/dev/null; exit 1)
+          pkill -f "vite preview" 2>/dev/null || true
