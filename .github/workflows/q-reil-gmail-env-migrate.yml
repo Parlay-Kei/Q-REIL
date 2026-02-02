@@ -1,0 +1,182 @@
+# PLATOPS-QREIL-CI-DONOR-DISCOVERY-AND-MIGRATE-0201
+# Copy to Parlay-Kei/Q-REIL as .github/workflows/q-reil-gmail-env-migrate.yml
+# Uses repo secret VERCEL_TOKEN (name only; never output values).
+# Runs donor discovery -> env migrate -> env assert; passes donor id via proofs/q-reil/donor.json.
+# Updates receipts in proofs/q-reil/ with CI evidence.
+
+name: Q REIL Gmail env migrate (discovery + migrate + assert)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  donor-discovery-and-migrate:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Checkout StrataNoble-OPS
+        uses: actions/checkout@v4
+        with:
+          repository: Parlay-Kei/StrataNoble-OPS
+          path: ops
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ops/package-lock.json
+
+      - name: Install OPS deps
+        run: npm ci
+        working-directory: ops
+
+      - name: Donor discovery (writes donor.json)
+        id: donor
+        working-directory: ops
+        run: |
+          node scripts/ops/vercel-donor-discovery.js > donor-discovery-out.json 2>&1
+          cat donor-discovery-out.json
+          echo 'donor_json<<EOF' >> "$GITHUB_OUTPUT"
+          cat donor-discovery-out.json >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Fail if donor discovery failed
+        if: steps.donor.outcome == 'failure'
+        working-directory: ops
+        run: |
+          echo "Donor discovery failed. Check donor-discovery-out.json. Failing workflow."
+          exit 1
+
+      - name: Write donor discovery receipt
+        working-directory: ops
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p proofs/q-reil
+          OK=$(jq -r '.ok' donor-discovery-out.json)
+          DONOR_NAME=$(jq -r '.donor_project_name // "n/a"' donor-discovery-out.json)
+          DONOR_ID=$(jq -r '.donor_project_id // "n/a"' donor-discovery-out.json)
+          SCOPE=$(jq -r '.environment_scope // "production"' donor-discovery-out.json)
+          cat > proofs/q-reil/PLATOPS-QREIL-VERCEL-DONOR-DISCOVERY-0101-receipt.md << RECEIPT
+          # PLATOPS-QREIL-VERCEL-DONOR-DISCOVERY-0101: Donor discovery receipt
+
+          **Mission ID:** PLATOPS-QREIL-VERCEL-DONOR-DISCOVERY-0101
+          **Date:** $(date -u +%Y-%m-%d)
+          **CI run:** $RUN_URL
+          **Target:** Using VERCEL_TOKEN, list projects in team strata-nobles-projects and select donor with all four Gmail keys in Production (names only).
+
+          ---
+
+          ## Result (this run)
+
+          | Item | Value |
+          |------|--------|
+          | **donor_project_name** | $DONOR_NAME |
+          | **donor_project_id** | $DONOR_ID |
+          | **environment_scope** | $SCOPE |
+          | **ok** | $OK |
+
+          ---
+
+          **Receipt path:** \`proofs/q-reil/PLATOPS-QREIL-VERCEL-DONOR-DISCOVERY-0101-receipt.md\`
+          RECEIPT
+
+      - name: Env migrate Gmail (reads donor from donor.json)
+        id: migrate
+        working-directory: ops
+        run: |
+          node scripts/ops/vercel-env-migrate-gmail.js > migrate-out.json 2>&1
+          cat migrate-out.json
+          echo 'migrate_json<<EOF' >> "$GITHUB_OUTPUT"
+          cat migrate-out.json >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: Fail if migrate failed (API may not allow reading donor env values)
+        if: steps.migrate.outcome == 'failure'
+        working-directory: ops
+        run: |
+          echo "Migration failed. If Vercel API does not allow reading env from donor, use fallback: mint new refresh token and set q-reil env via known Google OAuth client."
+          exit 1
+
+      - name: Write migrate receipt
+        if: success()
+        working-directory: ops
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          KEYS=$(jq -r '.keys_migrated | join(", ")' migrate-out.json)
+          cat > proofs/q-reil/PLATOPS-QREIL-VERCEL-ENV-MIGRATE-GMAIL-0102-receipt.md << RECEIPT
+          # PLATOPS-QREIL-VERCEL-ENV-MIGRATE-GMAIL-0102: Gmail env migration receipt
+
+          **Mission ID:** PLATOPS-QREIL-VERCEL-ENV-MIGRATE-GMAIL-0102
+          **Date:** $(date -u +%Y-%m-%d)
+          **CI run:** $RUN_URL
+          **Target:** Copy Gmail env values from donor to q-reil (Production). Names only; no values printed.
+
+          ---
+
+          ## Result (this run)
+
+          | Item | Value |
+          |------|--------|
+          | **keys_migrated** | $KEYS |
+          | **target_env_scope** | production |
+
+          ---
+
+          **Receipt path:** \`proofs/q-reil/PLATOPS-QREIL-VERCEL-ENV-MIGRATE-GMAIL-0102-receipt.md\`
+          RECEIPT
+
+      - name: Env assert (keys_found for q-reil)
+        id: assert
+        working-directory: ops
+        run: |
+          node scripts/ops/vercel-env-assert.js > assert-out.json 2>&1
+          cat assert-out.json
+          echo 'assert_json<<EOF' >> "$GITHUB_OUTPUT"
+          cat assert-out.json >> "$GITHUB_OUTPUT"
+          echo 'EOF' >> "$GITHUB_OUTPUT"
+
+      - name: Write env assert receipt (final)
+        working-directory: ops
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          KEYS_FOUND=$(jq -r '.keys_found | join(", ")' assert-out.json)
+          KEYS_MISSING=$(jq -r '.keys_missing | join(", ")' assert-out.json)
+          cat > proofs/q-reil/ENV_KEYS_ASSERT_RECEIPT_FINAL.md << RECEIPT
+          # PLATOPS-QREIL-VERCEL-ENV-SET-GMAIL-0011: Env keys assert receipt (names only)
+
+          **Mission ID:** PLATOPS-QREIL-VERCEL-ENV-SET-GMAIL-0011
+          **Date:** $(date -u +%Y-%m-%d)
+          **CI run:** $RUN_URL
+          **Target:** Confirm Gmail env var names present in Vercel project q-reil. No values.
+
+          ---
+
+          ## keys_found (names only)
+
+          | Field | Value |
+          |-------|--------|
+          | **keys_found** | $KEYS_FOUND |
+          | **keys_missing** | $KEYS_MISSING |
+
+          ---
+
+          **Receipt path:** \`proofs/q-reil/ENV_KEYS_ASSERT_RECEIPT_FINAL.md\`
+          RECEIPT
+
+      - name: Upload receipts artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: q-reil-receipts
+          path: |
+            ops/proofs/q-reil/PLATOPS-QREIL-VERCEL-DONOR-DISCOVERY-0101-receipt.md
+            ops/proofs/q-reil/PLATOPS-QREIL-VERCEL-ENV-MIGRATE-GMAIL-0102-receipt.md
+            ops/proofs/q-reil/ENV_KEYS_ASSERT_RECEIPT_FINAL.md
+            ops/proofs/q-reil/donor.json
