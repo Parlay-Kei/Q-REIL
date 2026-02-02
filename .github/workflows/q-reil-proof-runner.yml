@@ -1,0 +1,517 @@
+# Q REIL One-Button Proof Runner: full chain 0811 → 0812 (optional) → 0813 → 0814, write receipts, commit to main.
+# workflow_dispatch with optional run_env_set_prod (default true) and force_redeploy (default true).
+# No secrets in logs. No artifact download — receipts written to repo and committed at end.
+
+name: Q REIL Proof Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_env_set_prod:
+        description: 'If env keys missing in Production, run env set prod (0812) and rerun assert'
+        required: false
+        default: true
+        type: boolean
+      force_redeploy:
+        description: 'Run production redeploy (0813) after env assert'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  proof-chain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --- 0811: Env assert, write 0801 receipt ---
+      - name: Env assert (0811) and write 0801 receipt
+        id: env_assert
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          mkdir -p proofs/q-reil
+          RESULTS="[]"
+          for key in GMAIL_CLIENT_ID GMAIL_CLIENT_SECRET GMAIL_REFRESH_TOKEN GMAIL_SENDER_ADDRESS; do
+            ENTRY=$(echo "$RESP" | jq -r --arg k "$key" '[.envs[] | select(.key == $k)] | .[0]')
+            if [ -z "$ENTRY" ] || [ "$ENTRY" = "null" ]; then
+              RESULTS=$(echo "$RESULTS" | jq --arg k "$key" '. + [{"key":$k,"exists":false,"production":false,"preview":false,"development":false}]')
+            else
+              PROD=$(echo "$ENTRY" | jq -r '.target | index("production") != null')
+              PREV=$(echo "$ENTRY" | jq -r '.target | index("preview") != null')
+              DEV=$(echo "$ENTRY" | jq -r '.target | index("development") != null')
+              RESULTS=$(echo "$RESULTS" | jq --arg k "$key" --argjson p "$PROD" --argjson v "$PREV" --argjson d "$DEV" '. + [{"key":$k,"exists":true,"production":$p,"preview":$v,"development":$d}]')
+            fi
+          done
+          echo "$RESULTS" > proofs/q-reil/env-assert-results.json
+          PROD_COUNT=$(echo "$RESP" | jq -r '[.envs[] | select(.key == "GMAIL_CLIENT_ID" or .key == "GMAIL_CLIENT_SECRET" or .key == "GMAIL_REFRESH_TOKEN" or .key == "GMAIL_SENDER_ADDRESS") | select(.target[]? == "production")] | length')
+          if [ "$PROD_COUNT" -lt 4 ]; then
+            echo "keys_missing_in_prod=true" >> $GITHUB_OUTPUT
+          else
+            echo "keys_missing_in_prod=false" >> $GITHUB_OUTPUT
+          fi
+          echo "Keys in production: $PROD_COUNT/4"
+
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RECEIPT="proofs/q-reil/PLATOPS-QREIL-ENV-ASSERT-CI-0801-receipt.md"
+          {
+            echo "# PLATOPS-QREIL-ENV-ASSERT-CI-0801 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert (API) — Phase 1"
+            echo "**Spawn:** PLATOPS-QREIL-ENV-ASSERT-CI-RUN-0811"
+            echo "**Workflow:** \`.github/workflows/q-reil-proof-runner.yml\`"
+            echo "**Project:** q-reil (prj_VAiSllyEk27tnHDXagBt88h0h64j)"
+            echo "**Team:** team_DLPOODpWbIp8OubK6ngvbM1v"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Acceptance"
+            echo ""
+            echo "- Vercel API confirms the four Gmail env key **names** exist (no values in logs or receipts)."
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Actions run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|--------|"
+            echo "| **Workflow** | Q REIL Proof Runner |"
+            echo "| **Run URL** | $RUN_URL |"
+          } > "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "---" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "## Key presence (names only, by target)" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "| Key | Exists | Production | Preview | Development |" >> "$RECEIPT"
+          echo "|-----|--------|------------|---------|-------------|" >> "$RECEIPT"
+          while read -r row; do
+            key=$(echo "$row" | jq -r '.key')
+            ex=$(echo "$row" | jq -r '.exists')
+            prod=$(echo "$row" | jq -r '.production')
+            prev=$(echo "$row" | jq -r '.preview')
+            dev=$(echo "$row" | jq -r '.development')
+            echo "| $key | $ex | $prod | $prev | $dev |" >> "$RECEIPT"
+          done < <(jq -c '.[]' proofs/q-reil/env-assert-results.json)
+          echo "" >> "$RECEIPT"
+          echo "## Notes" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "- No env values are printed." >> "$RECEIPT"
+
+      # --- 0812: If any key missing in Production and run_env_set_prod, set prod and write 0802 ---
+      - name: Env set Production (0812) and write 0802 receipt
+        if: steps.env_assert.outputs.keys_missing_in_prod == 'true' && inputs.run_env_set_prod == true
+        id: env_set_prod
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          WANTED_KEYS="GMAIL_CLIENT_ID GMAIL_CLIENT_SECRET GMAIL_REFRESH_TOKEN GMAIL_SENDER_ADDRESS"
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          mkdir -p proofs/q-reil
+          PATCHED="[]"
+          ALREADY="[]"
+          FAILED="[]"
+          for key in $WANTED_KEYS; do
+            PROD_ENTRY=$(echo "$RESP" | jq -r --arg k "$key" '.envs[] | select(.key == $k) | select(.target[]? == "production") | .id')
+            if [ -n "$PROD_ENTRY" ] && [ "$PROD_ENTRY" != "null" ]; then
+              ALREADY=$(echo "$ALREADY" | jq --arg k "$key" '. + [$k]')
+              continue
+            fi
+            ENTRY=$(echo "$RESP" | jq -r --arg k "$key" '[.envs[] | select(.key == $k)] | .[0]')
+            if [ -z "$ENTRY" ] || [ "$ENTRY" = "null" ]; then
+              FAILED=$(echo "$FAILED" | jq --arg k "$key" '. + [{"key": $k, "reason": "key does not exist"}]')
+              continue
+            fi
+            ENV_ID=$(echo "$ENTRY" | jq -r '.id')
+            TARGETS=$(echo "$ENTRY" | jq -r '.target | join(" ")')
+            if echo "$TARGETS" | grep -q production; then
+              ALREADY=$(echo "$ALREADY" | jq --arg k "$key" '. + [$k]')
+              continue
+            fi
+            NEW_TARGETS=$(echo "$ENTRY" | jq -r '[.target[]] + ["production"] | unique | .')
+            TYPE=$(echo "$ENTRY" | jq -r '.type')
+            VAL_RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v1/projects/${PROJECT_ID}/env/${ENV_ID}?teamId=${TEAM_ID}" 2>/dev/null || true)
+            VAL=$(echo "$VAL_RESP" | jq -r '.value // empty')
+            if [ -z "$VAL" ]; then
+              PATCH_BODY=$(jq -n --arg key "$key" --arg type "$TYPE" --argjson target "$NEW_TARGETS" '{key: $key, type: $type, target: $target}')
+            else
+              PATCH_BODY=$(jq -n --arg key "$key" --arg type "$TYPE" --arg value "$VAL" --argjson target "$NEW_TARGETS" '{key: $key, type: $type, value: $value, target: $target}')
+            fi
+            HTTP=$(curl -sS -w "%{http_code}" -o /tmp/patch_out -X PATCH \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$PATCH_BODY" \
+              "https://api.vercel.com/v9/projects/${PROJECT_ID}/env/${ENV_ID}?teamId=${TEAM_ID}")
+            if [ "$HTTP" = "200" ]; then
+              PATCHED=$(echo "$PATCHED" | jq --arg k "$key" '. + [$k]')
+            else
+              FAILED=$(echo "$FAILED" | jq --arg k "$key" --arg h "$HTTP" '. + [{"key": $k, "reason": ("PATCH failed HTTP " + $h)}]')
+            fi
+          done
+          echo "$PATCHED" > proofs/q-reil/env-set-prod-patched.json
+          echo "$ALREADY" > proofs/q-reil/env-set-prod-already.json
+          echo "$FAILED" > proofs/q-reil/env-set-prod-failed.json
+
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RECEIPT="proofs/q-reil/PLATOPS-QREIL-ENV-SET-PROD-CI-0802-receipt.md"
+          {
+            echo "# PLATOPS-QREIL-ENV-SET-PROD-CI-0802 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert — Phase 2 (enforce Production scope)"
+            echo "**Spawn:** PLATOPS-QREIL-ENV-SET-PROD-CI-RUN-0812"
+            echo "**Workflow:** \`.github/workflows/q-reil-proof-runner.yml\`"
+            echo "**Project:** q-reil (prj_VAiSllyEk27tnHDXagBt88h0h64j)"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Actions run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|--------|"
+            echo "| **Workflow** | Q REIL Proof Runner |"
+            echo "| **Run URL** | $RUN_URL |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Keys patched to Production (names only)"
+            echo ""
+          } > "$RECEIPT"
+          PATCHED=$(cat proofs/q-reil/env-set-prod-patched.json)
+          if [ "$PATCHED" = "[]" ]; then
+            echo "(none)" >> "$RECEIPT"
+          else
+            for k in $(echo "$PATCHED" | jq -r '.[]'); do echo "- $k" >> "$RECEIPT"; done
+          fi
+          echo "" >> "$RECEIPT"
+          echo "## Keys already present in Production" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          ALREADY=$(cat proofs/q-reil/env-set-prod-already.json)
+          if [ "$ALREADY" = "[]" ]; then
+            echo "(none)" >> "$RECEIPT"
+          else
+            for k in $(echo "$ALREADY" | jq -r '.[]'); do echo "- $k" >> "$RECEIPT"; done
+          fi
+          echo "" >> "$RECEIPT"
+          echo "## Failures (key does not exist or PATCH failed)" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          FAILED=$(cat proofs/q-reil/env-set-prod-failed.json)
+          if [ "$FAILED" = "[]" ]; then
+            echo "(none)" >> "$RECEIPT"
+          else
+            echo "$FAILED" | jq -r '.[] | "- \(.key): \(.reason)"' >> "$RECEIPT"
+          fi
+          echo "" >> "$RECEIPT"
+          echo "---" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "Re-run Phase 1 (env assert) and update 0801 receipt to confirm all four keys in Production." >> "$RECEIPT"
+
+      # --- Rerun env assert and rewrite 0801 after 0812 ---
+      - name: Rerun env assert and rewrite 0801 receipt
+        if: steps.env_assert.outputs.keys_missing_in_prod == 'true' && inputs.run_env_set_prod == true
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          RESULTS="[]"
+          for key in GMAIL_CLIENT_ID GMAIL_CLIENT_SECRET GMAIL_REFRESH_TOKEN GMAIL_SENDER_ADDRESS; do
+            ENTRY=$(echo "$RESP" | jq -r --arg k "$key" '[.envs[] | select(.key == $k)] | .[0]')
+            if [ -z "$ENTRY" ] || [ "$ENTRY" = "null" ]; then
+              RESULTS=$(echo "$RESULTS" | jq --arg k "$key" '. + [{"key":$k,"exists":false,"production":false,"preview":false,"development":false}]')
+            else
+              PROD=$(echo "$ENTRY" | jq -r '.target | index("production") != null')
+              PREV=$(echo "$ENTRY" | jq -r '.target | index("preview") != null')
+              DEV=$(echo "$ENTRY" | jq -r '.target | index("development") != null')
+              RESULTS=$(echo "$RESULTS" | jq --arg k "$key" --argjson p "$PROD" --argjson v "$PREV" --argjson d "$DEV" '. + [{"key":$k,"exists":true,"production":$p,"preview":$v,"development":$d}]')
+            fi
+          done
+          echo "$RESULTS" > proofs/q-reil/env-assert-results.json
+
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RECEIPT="proofs/q-reil/PLATOPS-QREIL-ENV-ASSERT-CI-0801-receipt.md"
+          {
+            echo "# PLATOPS-QREIL-ENV-ASSERT-CI-0801 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert (API) — Phase 1"
+            echo "**Spawn:** PLATOPS-QREIL-ENV-ASSERT-CI-RUN-0811"
+            echo "**Workflow:** \`.github/workflows/q-reil-proof-runner.yml\`"
+            echo "**Project:** q-reil (prj_VAiSllyEk27tnHDXagBt88h0h64j)"
+            echo "**Team:** team_DLPOODpWbIp8OubK6ngvbM1v"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Acceptance"
+            echo ""
+            echo "- Vercel API confirms the four Gmail env key **names** exist (no values in logs or receipts)."
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Actions run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|--------|"
+            echo "| **Workflow** | Q REIL Proof Runner |"
+            echo "| **Run URL** | $RUN_URL |"
+          } > "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "---" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "## Key presence (names only, by target)" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "| Key | Exists | Production | Preview | Development |" >> "$RECEIPT"
+          echo "|-----|--------|------------|---------|-------------|" >> "$RECEIPT"
+          while read -r row; do
+            key=$(echo "$row" | jq -r '.key')
+            ex=$(echo "$row" | jq -r '.exists')
+            prod=$(echo "$row" | jq -r '.production')
+            prev=$(echo "$row" | jq -r '.preview')
+            dev=$(echo "$row" | jq -r '.development')
+            echo "| $key | $ex | $prod | $prev | $dev |" >> "$RECEIPT"
+          done < <(jq -c '.[]' proofs/q-reil/env-assert-results.json)
+          echo "" >> "$RECEIPT"
+          echo "## Notes" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "- No env values are printed. Rerun after Phase 2 (env set prod)." >> "$RECEIPT"
+
+      # --- 0813: Production redeploy, write 0803 receipt ---
+      - name: Production redeploy (0813) and write 0803 receipt
+        if: inputs.force_redeploy == true
+        id: redeploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          BODY=$(jq -n \
+            --arg name "q-reil" \
+            --arg project "$PROJECT_ID" \
+            '{ name: $name, project: $project, target: "production", gitSource: { type: "github", ref: "main" } }')
+          RESP=$(curl -sS -X POST \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            "https://api.vercel.com/v13/deployments?teamId=${TEAM_ID}")
+          DEPLOY_ID=$(echo "$RESP" | jq -r '.id')
+          READY_STATE=$(echo "$RESP" | jq -r '.readyState')
+          echo "deployment_id=$DEPLOY_ID" >> $GITHUB_OUTPUT
+          echo "ready_state=$READY_STATE" >> $GITHUB_OUTPUT
+
+          for i in $(seq 1 30); do
+            RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v13/deployments/${DEPLOY_ID}?teamId=${TEAM_ID}")
+            READY_STATE=$(echo "$RESP" | jq -r '.readyState')
+            STATUS=$(echo "$RESP" | jq -r '.status')
+            if [ "$READY_STATE" = "READY" ]; then
+              COMMIT_SHA=$(echo "$RESP" | jq -r '.meta.githubCommitSha // .gitSource.sha // empty')
+              echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+              break
+            fi
+            if [ "$READY_STATE" = "ERROR" ] || [ "$STATUS" = "ERROR" ]; then
+              echo "Deployment failed."
+              exit 1
+            fi
+            sleep 20
+          done
+          if [ "$READY_STATE" != "READY" ]; then
+            echo "Timeout waiting for READY."
+            exit 1
+          fi
+
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          RECEIPT="proofs/q-reil/RELOPS-QREIL-PROD-REDEPLOY-AFTER-ENV-0803-receipt.md"
+          {
+            echo "# RELOPS-QREIL-PROD-REDEPLOY-AFTER-ENV-0803 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert — Phase 3 (release after env correct)"
+            echo "**Spawn:** RELOPS-QREIL-PROD-REDEPLOY-RUN-0813"
+            echo "**Workflow:** \`.github/workflows/q-reil-proof-runner.yml\`"
+            echo "**Project:** q-reil (q-reil.vercel.app)"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Actions run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|--------|"
+            echo "| **Workflow** | Q REIL Proof Runner |"
+            echo "| **Run URL** | $RUN_URL |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Production deployment (after env)"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|--------|"
+            echo "| **Deployment ID** | $DEPLOY_ID |"
+            echo "| **Commit SHA** | $COMMIT_SHA |"
+            echo "| **Ready state** | READY |"
+          } > "$RECEIPT"
+
+      # --- 0814: Gmail proof POST; always write 0005, 0061, 0814 receipts; fail job if not Sent + gmail_message_id ---
+      - name: Gmail proof POST (0814) and write 0005, 0061, 0814 receipts
+        id: gmail_proof
+        run: |
+          BODY='{"approval_token":"qag-qreil-0814-proof","to":"stratanoble.co@gmail.com","subject":"QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814","body_text":"Q REIL Gmail message id proof. No reply needed."}'
+          RESP=$(curl -sS -w "\n%{http_code}" -X POST "https://q-reil.vercel.app/api/gmail-test-send" \
+            -H "Content-Type: application/json" -d "$BODY")
+          HTTP=$(echo "$RESP" | tail -n1)
+          JSON=$(echo "$RESP" | sed '$d')
+          STATUS=$(echo "$JSON" | jq -r '.status // "error"' 2>/dev/null) || STATUS="error"
+          MSG_ID=$(echo "$JSON" | jq -r '.gmail_message_id // empty' 2>/dev/null) || MSG_ID=""
+          REASON=$(echo "$JSON" | jq -r 'if .reason then .reason elif .error then .error elif .message then .message else empty end' 2>/dev/null) || true
+          [ -z "$REASON" ] && REASON="HTTP $HTTP"
+          REQ_BODY=$(echo "$BODY" | jq -c '{approval_token, to, subject}' 2>/dev/null) || REQ_BODY="{}"
+          if [ "$STATUS" = "Sent" ] && [ -n "$MSG_ID" ]; then
+            VERDICT="PASS"
+          else
+            VERDICT="FAIL"
+          fi
+          echo "http_code=$HTTP" >> $GITHUB_OUTPUT
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "gmail_message_id=$MSG_ID" >> $GITHUB_OUTPUT
+          echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
+
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          mkdir -p proofs/q-reil clients/strata-noble-internal/proofs
+
+          RECEIPT_0005="proofs/q-reil/QAG-REIL-GMAIL-TEST-SEND-PROOF-0005-receipt.md"
+          {
+            echo "# QAG-REIL-GMAIL-TEST-SEND-PROOF-0005 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Gmail message ID proof (no more guessing)"
+            echo "**Spawn:** QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-RERUN-0814"
+            echo "**Client:** strata-noble-internal"
+            echo "**Endpoint:** \`POST https://q-reil.vercel.app/api/gmail-test-send\`"
+            echo "**Date:** $TIMESTAMP"
+            echo "**Run URL:** $RUN_URL"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Request body (approval_token, to, subject only)"
+            echo ""
+            echo "\`\`\`json"
+            echo "$REQ_BODY"
+            echo "\`\`\`"
+            echo ""
+            echo "## Response"
+            echo ""
+            echo "- **Status:** $STATUS"
+            echo "- **Reason:** $REASON"
+            echo "- **gmail_message_id:** ${MSG_ID:-}"
+            echo ""
+            echo "## OCS verdict"
+            echo ""
+            echo "$VERDICT"
+          } > "$RECEIPT_0005"
+
+          RECEIPT_0061="clients/strata-noble-internal/proofs/ENGDEL-OPS-CORE-GMAIL-SENDER-0061-ops-email-send-gmail-receipt.md"
+          {
+            echo "# ENGDEL-OPS-CORE-GMAIL-SENDER-0061 — Ops Email Send Gmail Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Gmail Send Proof with Scope Gate (FINAL)"
+            echo "**Spawn:** QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-RERUN-0814"
+            echo "**Client:** strata-noble-internal"
+            echo "**Date:** $TIMESTAMP"
+            echo "**Run URL:** $RUN_URL"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Request body (approval_token, to, subject only)"
+            echo ""
+            echo "\`\`\`json"
+            echo "$REQ_BODY"
+            echo "\`\`\`"
+            echo ""
+            echo "## Response"
+            echo ""
+            echo "- **Status:** $STATUS"
+            echo "- **Reason:** $REASON"
+            echo "- **gmail_message_id:** ${MSG_ID:-}"
+            echo ""
+            echo "## OCS verdict"
+            echo ""
+            echo "$VERDICT"
+          } > "$RECEIPT_0061"
+
+          RECEIPT_0814="proofs/q-reil/QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814-receipt.md"
+          {
+            echo "# QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert — Phase 4 (Gmail message ID proof)"
+            echo "**Spawn:** QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-RERUN-0814"
+            echo "**Workflow:** \`.github/workflows/q-reil-proof-runner.yml\`"
+            echo "**Date:** $TIMESTAMP"
+            echo "**Run URL:** $RUN_URL"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Request body (approval_token, to, subject only)"
+            echo ""
+            echo "\`\`\`json"
+            echo "$REQ_BODY"
+            echo "\`\`\`"
+            echo ""
+            echo "## Response"
+            echo ""
+            echo "- **Status:** $STATUS"
+            echo "- **Reason:** $REASON"
+            echo "- **gmail_message_id:** ${MSG_ID:-}"
+            echo ""
+            echo "## OCS verdict"
+            echo ""
+            echo "$VERDICT"
+          } > "$RECEIPT_0814"
+
+      # --- Commit and push receipts to main (bot commit); always commit whether PASS or FAIL ---
+      - name: Commit and push receipts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for f in \
+            proofs/q-reil/PLATOPS-QREIL-ENV-ASSERT-CI-0801-receipt.md \
+            proofs/q-reil/PLATOPS-QREIL-ENV-SET-PROD-CI-0802-receipt.md \
+            proofs/q-reil/RELOPS-QREIL-PROD-REDEPLOY-AFTER-ENV-0803-receipt.md \
+            proofs/q-reil/QAG-REIL-GMAIL-TEST-SEND-PROOF-0005-receipt.md \
+            proofs/q-reil/QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814-receipt.md \
+            clients/strata-noble-internal/proofs/ENGDEL-OPS-CORE-GMAIL-SENDER-0061-ops-email-send-gmail-receipt.md; do
+            [ -f "$f" ] && git add "$f"
+          done
+          git diff --staged --quiet && echo "No receipt changes to commit." && exit 0
+          git commit -m "chore(proofs): persist proof-runner receipts [skip ci]"
+          git push origin HEAD:main
+
+      # --- Fail job if Gmail proof (0814) verdict was FAIL; blocks PASS ---
+      - name: Fail job if Gmail proof verdict is FAIL
+        if: steps.gmail_proof.outputs.verdict == 'FAIL'
+        run: |
+          echo "OCS verdict: FAIL — Gmail proof did not meet PASS (status=Sent and gmail_message_id present). Receipts were written and committed."
+          exit 1
