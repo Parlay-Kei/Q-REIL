@@ -4,5 +4,18 @@
 # Claude local settings
 .claude/settings.local.json
 q-reil/
+# Allow proof receipts under proofs/q-reil and proofs/** *.md|*.json (no force-add)
+!proofs/q-reil/
+!proofs/q-reil/**
+!proofs/**/*.md
+!proofs/**/*.json
+
+# Secrets and heavy artifacts (do not commit)
+.env
+.env.*
+*.tokens.json
+.tokens.json
 node_modules/
+dist/
+.vercel/
 *.zip
