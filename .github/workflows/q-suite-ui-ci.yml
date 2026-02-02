@@ -13,8 +13,59 @@ on:
       - '.github/workflows/q-suite-ui-ci.yml'
 
 jobs:
+  # QREIL-DRIFT-GUARD-0010: block production deploy when deployed SHA is not reachable from main
+  deploy-drift-guard:
+    name: Deploy drift guard (prod SHA on main)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout (full history for main ref)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit is reachable from main
+        id: drift-check
+        run: |
+          if git branch -r --contains ${{ github.sha }} | grep -q 'origin/main'; then
+            echo "ok=true" >> $GITHUB_OUTPUT
+            echo "Commit ${{ github.sha }} is reachable from main."
+          else
+            echo "ok=false" >> $GITHUB_OUTPUT
+            echo "::error::Deploy drift guard failed: ${{ github.sha }} is not reachable from main."
+            exit 1
+          fi
+
+      - name: Open Platform Ops incident on drift
+        if: failure() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="[Platform Ops] Deploy drift: SHA ${{ github.sha }} not reachable from main"
+          BODY="**Deploy drift guard failed (QREIL-DRIFT-GUARD-0010)**
+
+          The commit being deployed is **not** reachable from \`main\`. Production must only deploy SHAs that are on \`main\`.
+
+          | Field | Value |
+          |-------|--------|
+          | Commit SHA | ${{ github.sha }} |
+          | Ref | ${{ github.ref }} |
+          | Workflow run | ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} |
+          | Canonical | [ops/canonical/QREIL_REPO.json](../../ops/canonical/QREIL_REPO.json) (production_branch: main) |
+
+          **Actions:** Investigate why this SHA was deployed; ensure production deploys only from \`main\`. See [DEPLOY_DRIFT_GUARD_RECEIPT.md](../../proofs/qreil-ui-drift/DEPLOY_DRIFT_GUARD_RECEIPT.md)."
+          curl -sSf -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${{ github.api_url }}/repos/${{ github.repository }}/issues" \
+            -d "{\"title\":$(echo "$TITLE" | jq -Rs .),\"body\":$(echo "$BODY" | jq -Rs .)}" \
+            || echo "::warning::Could not create Platform Ops incident issue (check token)."
+
   typecheck-lint-build:
     runs-on: ubuntu-latest
+    needs: [deploy-drift-guard]
+    if: always() && (needs.deploy-drift-guard.result == 'success' || needs.deploy-drift-guard.result == 'skipped')
     defaults:
       run:
         working-directory: q-suite-ui
