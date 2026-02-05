@@ -43,6 +43,7 @@ OAuth client (Web) must exist in Google Cloud. One-time steps:
      https://q-reil.vercel.app/api/connectors/gmail/oauth/callback
      http://localhost:8765/callback
      ```
+   - **If the client only has `http://localhost`:** Google may show "This browser or app may not be secure". Add **`http://localhost:8765/callback`** to Authorized redirect URIs, then run one-time auth **without** setting `OAUTH_REDIRECT_URI` so the script uses port 8765.
    - Create → copy **Client ID** and **Client secret**.
 
 5. **Secrets**  

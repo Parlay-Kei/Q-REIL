@@ -1,0 +1,131 @@
+# RELOPS-QREIL-PROD-REDEPLOY-RUN-0813: Trigger production deployment, write receipt, upload artifact
+# workflow_dispatch. Uses VERCEL_TOKEN. Writes receipt with run URL, deployment id, commit sha, READY.
+
+name: Q REIL Production redeploy (after env)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  redeploy-prod:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Trigger production deployment
+        id: trigger
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          BODY=$(jq -n \
+            --arg name "q-reil" \
+            --arg project "$PROJECT_ID" \
+            '{ name: $name, project: $project, target: "production", gitSource: { type: "github", ref: "main" } }')
+          RESP=$(curl -sS -X POST \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$BODY" \
+            "https://api.vercel.com/v13/deployments?teamId=${TEAM_ID}")
+          DEPLOY_ID=$(echo "$RESP" | jq -r '.id')
+          READY_STATE=$(echo "$RESP" | jq -r '.readyState')
+          COMMIT_SHA=$(echo "$RESP" | jq -r '.meta.githubCommitSha // .gitSource.sha // empty')
+          if [ -z "$COMMIT_SHA" ] || [ "$COMMIT_SHA" = "null" ]; then
+            COMMIT_SHA=$(echo "$RESP" | jq -r '.gitSource.sha // empty')
+          fi
+          echo "deployment_id=$DEPLOY_ID" >> $GITHUB_OUTPUT
+          echo "ready_state=$READY_STATE" >> $GITHUB_OUTPUT
+          echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+          echo "Deployment created: $DEPLOY_ID (readyState: $READY_STATE)"
+
+      - name: Wait for deployment READY
+        id: wait
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          DEPLOY_ID="${{ steps.trigger.outputs.deployment_id }}"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          for i in $(seq 1 30); do
+            RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v13/deployments/${DEPLOY_ID}?teamId=${TEAM_ID}")
+            READY_STATE=$(echo "$RESP" | jq -r '.readyState')
+            STATUS=$(echo "$RESP" | jq -r '.status')
+            echo "Poll $i: readyState=$READY_STATE status=$STATUS"
+            if [ "$READY_STATE" = "READY" ]; then
+              COMMIT_SHA=$(echo "$RESP" | jq -r '.meta.githubCommitSha // .gitSource.sha // empty')
+              echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
+              echo "Deployment READY."
+              exit 0
+            fi
+            if [ "$READY_STATE" = "ERROR" ] || [ "$STATUS" = "ERROR" ]; then
+              echo "Deployment failed."
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "Timeout waiting for READY."
+          exit 1
+
+      - name: Write receipt
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPLOY_ID: ${{ steps.trigger.outputs.deployment_id }}
+          COMMIT_SHA: ${{ steps.wait.outputs.commit_sha }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          mkdir -p repo/proofs/q-reil
+          RECEIPT="repo/proofs/q-reil/RELOPS-QREIL-PROD-REDEPLOY-AFTER-ENV-0803-receipt.md"
+          {
+            echo "# RELOPS-QREIL-PROD-REDEPLOY-AFTER-ENV-0803 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert — Phase 3 (release after env correct)"
+            echo "**Spawn:** RELOPS-QREIL-PROD-REDEPLOY-RUN-0813"
+            echo "**Workflow:** \`.github/workflows/q-reil-prod-redeploy-after-env.yml\`"
+            echo "**Project:** q-reil (q-reil.vercel.app)"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Actions run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|--------|"
+            echo "| **Workflow** | Q REIL Production redeploy (after env) |"
+            echo "| **Run URL** | $RUN_URL |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Production deployment (after env)"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|--------|"
+            echo "| **Deployment ID** | $DEPLOY_ID |"
+            echo "| **Commit SHA** | $COMMIT_SHA |"
+            echo "| **Ready state** | READY |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "Re-run Phase 4 (QAG gmail-test-send) to capture \`gmail_message_id\` in receipts 0005 and 0061."
+          } > "$RECEIPT"
+
+      - name: Output deployment summary
+        run: |
+          echo "## Production deployment (RELOPS-0813)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Deployment ID** | ${{ steps.trigger.outputs.deployment_id }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Commit SHA** | ${{ steps.wait.outputs.commit_sha }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Ready state** | READY |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload receipt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: relops-qreil-prod-redeploy-0803-receipt
+          path: repo/proofs/q-reil/RELOPS-QREIL-PROD-REDEPLOY-AFTER-ENV-0803-receipt.md

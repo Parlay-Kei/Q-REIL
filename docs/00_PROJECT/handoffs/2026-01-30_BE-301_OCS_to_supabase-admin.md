@@ -35,9 +35,9 @@ Complete the **infrastructure prerequisites** for the Gmail 7-day ingestion serv
 
 ## Completion
 
-- [ ] Storage bucket **`mail-attachments`** exists in the Q REIL Supabase project and is writable by the service role.
-- [ ] Migration **00032_mail_upsert_service_role.sql** has been applied; no errors.
-- [ ] Optionally post acknowledgment in this file or in [RECEIPTS.md](../../q-reil/RECEIPTS.md) §8 BE-301.
+- [x] Storage bucket **`mail-attachments`** exists in the Q REIL Supabase project and is writable by the service role.
+- [x] Migration **00032_mail_upsert_service_role.sql** has been applied; no errors.
+- [x] Acknowledged 2026-01-31: OCS ran `node scripts/supabase-apply-migrations/create-bucket.mjs` (bucket already existed) and `node run-with-pg.mjs` (migrations 00001–00032 applied).
 
 ---
 

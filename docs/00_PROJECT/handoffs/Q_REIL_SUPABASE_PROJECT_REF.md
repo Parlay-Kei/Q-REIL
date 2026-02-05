@@ -33,9 +33,6 @@ Plus for AUTH-101 and BE-301: `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SEC
 
 ## Remaining setup
 
-1. **Migrations 00004 → 00032** — Either:
-   - **Node (no psql):** Get DB connection string from Dashboard → Settings → Database. Set `SUPABASE_DB_URL`, then run `cd scripts/supabase-apply-migrations && npm install && node run-with-pg.mjs`. See [scripts/supabase-apply-migrations/README.md](../../scripts/supabase-apply-migrations/README.md).
-   - **Dashboard:** SQL Editor → run each file in `docs/02_DATA/migrations/` in order (00004 through 00032).
-   - **psql:** Set `SUPABASE_DB_URL` and run `./scripts/supabase-apply-migrations/apply.sh`.
+1. ~~**Migrations 00004 → 00032**~~ — **Done (2026-01-31):** Applied via `node scripts/supabase-apply-migrations/run-with-pg.mjs` (using `SUPABASE_DB_URL` from that script’s `.env.local`).
 2. **Connection string format:** `postgresql://postgres.umzuncubiizoomoxlgts:[YOUR-PASSWORD]@aws-1-us-east-1.pooler.supabase.com:6543/postgres` (get or reset password in Dashboard).
-3. **Storage bucket** — Created via script: `cd scripts/supabase-apply-migrations && node create-bucket.mjs` (uses token from `c:\Dev\Direct-Cuts\.env.local`). Or manually: Dashboard → Storage → New bucket → name: `mail-attachments`, private.
+3. ~~**Storage bucket**~~ — **Done:** Bucket **`mail-attachments`** exists (created via `node create-bucket.mjs` or manually; confirmed 2026-01-31).

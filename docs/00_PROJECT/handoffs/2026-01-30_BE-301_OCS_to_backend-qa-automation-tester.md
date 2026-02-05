@@ -55,6 +55,8 @@
 - [ ] Ledger events present; no raw email bodies in event payloads.
 - [ ] Update receipt checkboxes in BE-301_INGEST_7DAY_PROOF.md and BE-301_IDEMPOTENCY_PROOF.md as satisfied; optionally update [RECEIPTS.md](../../q-reil/RECEIPTS.md) §8 BE-301 status.
 
+**Note (2026-01-31):** OCS ran `node connectors/gmail/run-sync.mjs`; sync failed with OAuth `unauthorized_client` (token refresh 401). Prerequisites (bucket + 00032) are done. Fix OAuth credentials/token (match client to token; re-run proof script if needed), then re-run sync to complete verification.
+
 ---
 
 **Receipts:** `docs/q-reil/receipts/BE-301_INGEST_7DAY_PROOF.md`, `docs/q-reil/receipts/BE-301_IDEMPOTENCY_PROOF.md`, `docs/q-reil/RECEIPTS.md`.

@@ -19,11 +19,11 @@ Agents capable of handling remaining **Manual** tasks were invoked via handoffs:
 
 | Handoff | To | Task | Status |
 |---------|----|------|--------|
-| [2026-01-30_OCS_to_supabase-admin_CREATE_SUPABASE_PROJECT.md](2026-01-30_OCS_to_supabase-admin_CREATE_SUPABASE_PROJECT.md) | **supabase-admin** | **Create and configure Supabase project** (project + migrations + bucket `mail-attachments`) | **Pending** |
+| [2026-01-30_OCS_to_supabase-admin_CREATE_SUPABASE_PROJECT.md](2026-01-30_OCS_to_supabase-admin_CREATE_SUPABASE_PROJECT.md) | **supabase-admin** | **Create and configure Supabase project** (project + migrations + bucket `mail-attachments`) | **Pending** (project exists; migrations + bucket done 2026-01-31) |
 | [2026-01-30_MANUAL_OCS_to_github-admin.md](2026-01-30_MANUAL_OCS_to_github-admin.md) | github-admin | Connect Vercel to Git (single Manual step from repo setup) | Pending |
 | [2026-01-30_OPS-901_OCS_to_infra-deployment-specialist.md](2026-01-30_OPS-901_OCS_to_infra-deployment-specialist.md) | infra-deployment-specialist | Execute OPS-901 runbook (GCP + Vercel + 5-point proof) | Pending |
-| [2026-01-30_BE-301_OCS_to_supabase-admin.md](2026-01-30_BE-301_OCS_to_supabase-admin.md) | supabase-admin | BE-301: Create Storage bucket `mail-attachments`, apply migration 00032 (skip if project created via handoff above) | Pending |
-| [2026-01-30_BE-301_OCS_to_backend-qa-automation-tester.md](2026-01-30_BE-301_OCS_to_backend-qa-automation-tester.md) | backend-qa-automation-tester | BE-301: Verify 7-day backfill and idempotency per receipts | Pending |
+| [2026-01-30_BE-301_OCS_to_supabase-admin.md](2026-01-30_BE-301_OCS_to_supabase-admin.md) | supabase-admin | BE-301: Create Storage bucket `mail-attachments`, apply migration 00032 (skip if project created via handoff above) | **Complete** (2026-01-31) |
+| [2026-01-30_BE-301_OCS_to_backend-qa-automation-tester.md](2026-01-30_BE-301_OCS_to_backend-qa-automation-tester.md) | backend-qa-automation-tester | BE-301: Verify 7-day backfill and idempotency per receipts | **Blocked** (OAuth: fix credentials/token then run `node connectors/gmail/run-sync.mjs`) |
 
 ---
 

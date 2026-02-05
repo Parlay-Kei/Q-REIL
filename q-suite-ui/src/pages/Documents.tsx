@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DEFAULT_DOCUMENT_TITLE, TITLE_REIL_SUBVIEW } from '../constants/brand';
+import { REIL_DEFAULT_ORG_ID } from '../constants/inbox';
 import { ReilBreadcrumb } from '../components/layout/ReilBreadcrumb';
 import {
   FileTextIcon,
@@ -20,6 +21,8 @@ import {
   FolderIcon,
   XIcon } from
 'lucide-react';
+import { fetchReilDocuments } from '../lib/reilRecordsApi';
+import { documentsToCsv, documentsToJson, downloadCsv, downloadJson } from '../lib/reilExport';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
@@ -230,6 +233,34 @@ export function Documents() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {REIL_DEFAULT_ORG_ID && (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={DownloadIcon}
+                    onClick={async () => {
+                      const { documents, error } = await fetchReilDocuments({ limit: 500 });
+                      const csv = documentsToCsv(error ? [] : documents);
+                      downloadCsv(csv, `reil-documents-${new Date().toISOString().slice(0, 10)}.csv`);
+                    }}
+                  >
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={DownloadIcon}
+                    onClick={async () => {
+                      const { documents, error } = await fetchReilDocuments({ limit: 500 });
+                      const json = documentsToJson(error ? [] : documents);
+                      downloadJson(json, `reil-documents-${new Date().toISOString().slice(0, 10)}.json`);
+                    }}
+                  >
+                    Export JSON
+                  </Button>
+                </>
+              )}
               <Button variant="secondary" leftIcon={UploadIcon}>
                 Upload
               </Button>

@@ -3,7 +3,7 @@
  * OPS-901 standalone Gmail OAuth proof script.
  * Proves: (1) OAuth connect succeeds, (2) Token refresh via forced refresh.
  * Writes .tokens.json for indefinite agent use. Uses system browser (no Playwright).
- * Env from q-reil/.env.local or scripts/oauth-proof/.env.local or process.env.
+ * Env: GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET (canonical). See docs/reil-core/OAUTH_ENV_CANON.md.
  */
 
 import crypto from 'crypto';
@@ -13,15 +13,20 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 import { platform } from 'os';
+import { getGmailOAuthEnv } from '../../connectors/gmail/lib/oauthEnvCanon.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORTS = [8765, 8766, 8767, 8768, 8769];
 const TOKENS_FILE = path.join(__dirname, '.tokens.json');
 
 function loadEnv() {
+  const ROOT = path.resolve(__dirname, '../..');
   const candidates = [
+    path.join(ROOT, '.env.local'),
     path.join(__dirname, '.env.local'),
-    path.join(__dirname, '../../q-reil/.env.local'),
+    path.join(ROOT, 'connectors/gmail/.env.local'),
+    path.join(ROOT, 'q-reil/.env.local'),
+    path.join(process.cwd(), '.env.local'),
   ];
   for (const envPath of candidates) {
     if (fs.existsSync(envPath)) {
@@ -33,11 +38,32 @@ function loadEnv() {
           process.env[m[1]] = val;
         }
       }
+      process.env.LOAD_ENV_SELECTED_FILE = envPath;
+      return envPath;
     }
   }
+  process.env.LOAD_ENV_SELECTED_FILE = '';
+  return null;
+}
+
+function printEnvSanityReceipt() {
+  const { env: oauthEnv, missing } = getGmailOAuthEnv(process.env);
+  const clientId = oauthEnv.GMAIL_CLIENT_ID;
+  const clientSecret = oauthEnv.GMAIL_CLIENT_SECRET;
+  const selected = process.env.LOAD_ENV_SELECTED_FILE || '(not set)';
+  console.error(JSON.stringify({
+    receipt: 'oauth_env_sanity',
+    client_id_present: !!clientId,
+    client_secret_present: !!clientSecret,
+    client_id_redacted: clientId ? `...${String(clientId).slice(-8)}` : '(missing)',
+    client_secret_redacted: clientSecret ? '[REDACTED]' : '(missing)',
+    load_env_selected_file: selected,
+    missing_canon_keys: missing,
+  }));
 }
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
@@ -69,6 +95,10 @@ function openBrowser(url) {
   exec(cmd, (err) => {
     if (err) console.log('Open this URL in your browser:', url);
   });
+}
+
+function sha256Hex(str) {
+  return crypto.createHash('sha256').update(str, 'utf8').digest('hex');
 }
 
 async function exchangeCodeForTokens(code, codeVerifier, clientId, clientSecret, redirectUri) {
@@ -113,10 +143,12 @@ async function refreshAccessToken(refreshToken, clientId, clientSecret) {
 
 function main() {
   loadEnv();
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  printEnvSanityReceipt();
+  const { env: oauthEnv, missing } = getGmailOAuthEnv(process.env);
+  const clientId = oauthEnv.GMAIL_CLIENT_ID;
+  const clientSecret = oauthEnv.GMAIL_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    console.error('Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (q-reil/.env.local or env)');
+    console.error('Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET (canonical). See docs/reil-core/OAUTH_ENV_CANON.md. Missing:', missing?.length ? missing : 'client credentials');
     process.exit(1);
   }
 
@@ -163,6 +195,9 @@ function main() {
           access_token: tokens.access_token,
           expires_at: expiresAt,
           scope: tokens.scope,
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          client_secret_sha256: sha256Hex(clientSecret),
         }, null, 2), 'utf8');
         console.log('\n--- OAuth success ---');
         console.log('Tokens written to:', TOKENS_FILE);
@@ -208,6 +243,7 @@ function main() {
       scope: SCOPES,
       access_type: 'offline',
       prompt: 'consent',
+      include_granted_scopes: 'true',
       state,
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',

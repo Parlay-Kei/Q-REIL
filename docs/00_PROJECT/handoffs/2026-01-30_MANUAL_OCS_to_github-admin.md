@@ -14,7 +14,7 @@
 Per [GITHUB_ADMIN_HANDOFF.md](../../q-reil/GITHUB_ADMIN_HANDOFF.md) step 4:
 
 1. Open [Vercel → q-reil → Settings](https://vercel.com/strata-nobles-projects/q-reil/settings).
-2. Connect Git repository: **AspireNexis/q-reil**.
+2. Connect Git repository: **Parlay-Kei/Q-REIL** (canonical: [ops/canonical/QREIL_REPO.json](../../../ops/canonical/QREIL_REPO.json) — `repo_url: https://github.com/Parlay-Kei/Q-REIL.git`).
 3. Set production branch: `main`. Preview deployments: default.
 
 ---

@@ -8,7 +8,9 @@ import { Apps } from './pages/Apps';
 import { REILHome } from './pages/REILHome';
 import { Inbox } from './pages/Inbox';
 import { ThreadDetail } from './pages/ThreadDetail';
+import { ItemDetail } from './pages/ItemDetail';
 import { Records } from './pages/Records';
+import { RecordDetail } from './pages/RecordDetail';
 import { DealWorkspace } from './pages/DealWorkspace';
 import { Documents } from './pages/Documents';
 import { ActivityLedger } from './pages/ActivityLedger';
@@ -33,8 +35,10 @@ export function App() {
               <Route path="apps" element={<Apps />} />
               <Route path="reil" element={<REILHome />} />
               <Route path="reil/inbox" element={<Inbox />} />
+              <Route path="reil/inbox/item/:rawId" element={<ItemDetail />} />
               <Route path="reil/inbox/:threadId" element={<ThreadDetail />} />
               <Route path="reil/records" element={<Records defaultTab="contacts" />} />
+              <Route path="reil/records/:recordId" element={<RecordDetail />} />
               <Route path="reil/deals" element={<Records defaultTab="deals" />} />
               <Route path="reil/deals/:dealId" element={<DealWorkspace />} />
               <Route path="reil/documents" element={<Documents />} />

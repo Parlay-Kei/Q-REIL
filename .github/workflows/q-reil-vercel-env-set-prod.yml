@@ -1,0 +1,142 @@
+# PLATOPS-QREIL-ENV-SET-PROD-CI-0812: Set Gmail keys to Production, write receipt, upload artifact
+# workflow_dispatch. Uses VERCEL_TOKEN. Writes receipt with run URL, patched keys, already-present, failures (no placeholders).
+
+name: Q REIL Vercel env set Production
+
+on:
+  workflow_dispatch:
+
+jobs:
+  env-set-prod:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Ensure Gmail keys in Production and capture results
+        id: setprod
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          WANTED_KEYS="GMAIL_CLIENT_ID GMAIL_CLIENT_SECRET GMAIL_REFRESH_TOKEN GMAIL_SENDER_ADDRESS"
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          mkdir -p repo/proofs/q-reil
+          PATCHED="[]"
+          ALREADY="[]"
+          FAILED="[]"
+          echo "## Env set Production (key names and targets only)" >> "$GITHUB_STEP_SUMMARY"
+          for key in $WANTED_KEYS; do
+            PROD_ENTRY=$(echo "$RESP" | jq -r --arg k "$key" '.envs[] | select(.key == $k) | select(.target[]? == "production") | .id')
+            if [ -n "$PROD_ENTRY" ] && [ "$PROD_ENTRY" != "null" ]; then
+              echo "- **$key**: already in Production (no change)" >> "$GITHUB_STEP_SUMMARY"
+              ALREADY=$(echo "$ALREADY" | jq --arg k "$key" '. + [$k]')
+              continue
+            fi
+            ENTRY=$(echo "$RESP" | jq -r --arg k "$key" '[.envs[] | select(.key == $k)] | .[0]')
+            if [ -z "$ENTRY" ] || [ "$ENTRY" = "null" ]; then
+              echo "- **$key**: MISSING — set in Vercel Dashboard (Production)" >> "$GITHUB_STEP_SUMMARY"
+              FAILED=$(echo "$FAILED" | jq --arg k "$key" '. + [{"key": $k, "reason": "key does not exist"}]')
+              continue
+            fi
+            ENV_ID=$(echo "$ENTRY" | jq -r '.id')
+            TARGETS=$(echo "$ENTRY" | jq -r '.target | join(" ")')
+            if echo "$TARGETS" | grep -q production; then
+              ALREADY=$(echo "$ALREADY" | jq --arg k "$key" '. + [$k]')
+              continue
+            fi
+            NEW_TARGETS=$(echo "$ENTRY" | jq -r '[.target[]] + ["production"] | unique | .')
+            TYPE=$(echo "$ENTRY" | jq -r '.type')
+            VAL_RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "https://api.vercel.com/v1/projects/${PROJECT_ID}/env/${ENV_ID}?teamId=${TEAM_ID}" 2>/dev/null || true)
+            VAL=$(echo "$VAL_RESP" | jq -r '.value // empty')
+            if [ -z "$VAL" ]; then
+              PATCH_BODY=$(jq -n --arg key "$key" --arg type "$TYPE" --argjson target "$NEW_TARGETS" '{key: $key, type: $type, target: $target}')
+            else
+              PATCH_BODY=$(jq -n --arg key "$key" --arg type "$TYPE" --arg value "$VAL" --argjson target "$NEW_TARGETS" '{key: $key, type: $type, value: $value, target: $target}')
+            fi
+            HTTP=$(curl -sS -w "%{http_code}" -o /tmp/patch_out -X PATCH \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$PATCH_BODY" \
+              "https://api.vercel.com/v9/projects/${PROJECT_ID}/env/${ENV_ID}?teamId=${TEAM_ID}")
+            if [ "$HTTP" = "200" ]; then
+              echo "- **$key**: Production added" >> "$GITHUB_STEP_SUMMARY"
+              PATCHED=$(echo "$PATCHED" | jq --arg k "$key" '. + [$k]')
+            else
+              FAILED=$(echo "$FAILED" | jq --arg k "$key" --arg h "$HTTP" '. + [{"key": $k, "reason": ("PATCH failed HTTP " + $h)}]')
+              echo "- **$key**: PATCH failed (HTTP $HTTP)" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          echo "$PATCHED" > repo/proofs/q-reil/env-set-prod-patched.json
+          echo "$ALREADY" > repo/proofs/q-reil/env-set-prod-already.json
+          echo "$FAILED" > repo/proofs/q-reil/env-set-prod-failed.json
+
+      - name: Write receipt
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RECEIPT="repo/proofs/q-reil/PLATOPS-QREIL-ENV-SET-PROD-CI-0802-receipt.md"
+          {
+            echo "# PLATOPS-QREIL-ENV-SET-PROD-CI-0802 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert — Phase 2 (enforce Production scope)"
+            echo "**Spawn:** PLATOPS-QREIL-ENV-SET-PROD-CI-RUN-0812"
+            echo "**Workflow:** \`.github/workflows/q-reil-vercel-env-set-prod.yml\`"
+            echo "**Project:** q-reil (prj_VAiSllyEk27tnHDXagBt88h0h64j)"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Actions run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|--------|"
+            echo "| **Workflow** | Q REIL Vercel env set Production |"
+            echo "| **Run URL** | $RUN_URL |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Keys patched to Production (names only)"
+            echo ""
+          } > "$RECEIPT"
+          PATCHED=$(cat repo/proofs/q-reil/env-set-prod-patched.json)
+          if [ "$PATCHED" = "[]" ]; then
+            echo "(none)" >> "$RECEIPT"
+          else
+            for k in $(echo "$PATCHED" | jq -r '.[]'); do echo "- $k" >> "$RECEIPT"; done
+          fi
+          echo "" >> "$RECEIPT"
+          echo "## Keys already present in Production" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          ALREADY=$(cat repo/proofs/q-reil/env-set-prod-already.json)
+          if [ "$ALREADY" = "[]" ]; then
+            echo "(none)" >> "$RECEIPT"
+          else
+            for k in $(echo "$ALREADY" | jq -r '.[]'); do echo "- $k" >> "$RECEIPT"; done
+          fi
+          echo "" >> "$RECEIPT"
+          echo "## Failures (key does not exist or PATCH failed)" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          FAILED=$(cat repo/proofs/q-reil/env-set-prod-failed.json)
+          if [ "$FAILED" = "[]" ]; then
+            echo "(none)" >> "$RECEIPT"
+          else
+            echo "$FAILED" | jq -r '.[] | "- \(.key): \(.reason)"' >> "$RECEIPT"
+          fi
+          echo "" >> "$RECEIPT"
+          echo "---" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "Re-run Phase 1 (env assert) and update 0801 receipt to confirm all four keys in Production." >> "$RECEIPT"
+
+      - name: Upload receipt artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: platrops-qreil-env-set-prod-0802-receipt
+          path: repo/proofs/q-reil/PLATOPS-QREIL-ENV-SET-PROD-CI-0802-receipt.md

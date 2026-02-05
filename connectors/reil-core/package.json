@@ -1,0 +1,13 @@
+{
+  "name": "@q-reil/reil-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "REIL Core normalize and ledger services (Node)",
+  "scripts": {
+    "normalize": "node normalize/run-normalize.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  }
+}

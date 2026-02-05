@@ -1,0 +1,170 @@
+# QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-RERUN-0814: POST gmail-test-send, capture gmail_message_id, write receipts 0005 and 0061
+# workflow_dispatch. Run after Phase 3 shows READY. Writes receipts with run URL and gmail_message_id (or error). No placeholders.
+
+name: QAG Q REIL Gmail message ID proof
+
+on:
+  workflow_dispatch:
+
+jobs:
+  gmail-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: POST gmail-test-send and capture response
+        id: post
+        run: |
+          BODY='{"approval_token":"qag-qreil-0814-proof","to":"stratanoble.co@gmail.com","subject":"QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814","body_text":"Q REIL Gmail message id proof. No reply needed."}'
+          RESP=$(curl -sS -w "\n%{http_code}" -X POST "https://q-reil.vercel.app/api/gmail-test-send" \
+            -H "Content-Type: application/json" -d "$BODY")
+          HTTP=$(echo "$RESP" | tail -n1)
+          JSON=$(echo "$RESP" | sed '$d')
+          STATUS=$(echo "$JSON" | jq -r '.status // "error"')
+          MSG_ID=$(echo "$JSON" | jq -r '.gmail_message_id // empty')
+          echo "http_code=$HTTP" >> $GITHUB_OUTPUT
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "gmail_message_id=$MSG_ID" >> $GITHUB_OUTPUT
+          echo "HTTP $HTTP | status=$STATUS | gmail_message_id=${MSG_ID:-none}"
+
+      - name: Write receipts 0005 and 0061 and 0814
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS: ${{ steps.post.outputs.status }}
+          GMAIL_MSG_ID: ${{ steps.post.outputs.gmail_message_id }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          PASS_VERDICT=""
+          if [ "$STATUS" = "Sent" ] && [ -n "$GMAIL_MSG_ID" ]; then
+            PASS_VERDICT="PASS"
+          else
+            PASS_VERDICT="FAIL — status=$STATUS, gmail_message_id=${GMAIL_MSG_ID:-none}"
+          fi
+          mkdir -p repo/proofs/q-reil repo/clients/strata-noble-internal/proofs
+
+          # Receipt 0005
+          RECEIPT_0005="repo/proofs/q-reil/QAG-REIL-GMAIL-TEST-SEND-PROOF-0005-receipt.md"
+          {
+            echo "# QAG-REIL-GMAIL-TEST-SEND-PROOF-0005 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Gmail message ID proof (no more guessing)"
+            echo "**Spawn:** QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-RERUN-0814"
+            echo "**Client:** strata-noble-internal"
+            echo "**Endpoint:** \`POST https://q-reil.vercel.app/api/gmail-test-send\`"
+            echo "**Date:** $TIMESTAMP"
+            echo "**Actions run:** $RUN_URL"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Gmail test send (q-reil Production)"
+            echo ""
+            echo "- **Endpoint:** \`POST https://q-reil.vercel.app/api/gmail-test-send\`"
+            echo "- **Expected:** \`{ \"status\": \"Sent\", \"gmail_message_id\": \"<id>\" }\`"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Result"
+            echo ""
+            echo "- **Status:** $STATUS"
+            echo "- **gmail_message_id:** ${GMAIL_MSG_ID:-*(none)*}"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## OCS verdict"
+            echo ""
+            echo "$PASS_VERDICT — \`gmail_message_id\` recorded here and in ENGDEL-OPS-CORE-GMAIL-SENDER-0061."
+          } > "$RECEIPT_0005"
+
+          # Receipt 0061
+          RECEIPT_0061="repo/clients/strata-noble-internal/proofs/ENGDEL-OPS-CORE-GMAIL-SENDER-0061-ops-email-send-gmail-receipt.md"
+          {
+            echo "# ENGDEL-OPS-CORE-GMAIL-SENDER-0061 — Ops Email Send Gmail Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Gmail Send Proof with Scope Gate (FINAL)"
+            echo "**Spawn:** QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-RERUN-0814"
+            echo "**Client:** strata-noble-internal"
+            echo "**Date:** $TIMESTAMP"
+            echo "**Actions run:** $RUN_URL"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Gmail test send (q-reil Production)"
+            echo ""
+            echo "- **Endpoint:** \`POST https://q-reil.vercel.app/api/gmail-test-send\`"
+            echo "- **Expected:** \`{ \"status\": \"Sent\", \"gmail_message_id\": \"<id>\" }\`"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Result"
+            echo ""
+            echo "- **Status:** $STATUS"
+            echo "- **gmail_message_id:** ${GMAIL_MSG_ID:-*(none)*}"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## OCS verdict"
+            echo ""
+            echo "$PASS_VERDICT — \`gmail_message_id\` recorded here and in QAG-REIL-GMAIL-TEST-SEND-PROOF-0005."
+          } > "$RECEIPT_0061"
+
+          # Receipt 0814 (QAG run)
+          RECEIPT_0814="repo/proofs/q-reil/QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814-receipt.md"
+          {
+            echo "# QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert — Phase 4 (Gmail message ID proof)"
+            echo "**Spawn:** QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-RERUN-0814"
+            echo "**Workflow:** \`.github/workflows/q-reil-qag-gmail-message-id-proof.yml\`"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Actions run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|--------|"
+            echo "| **Run URL** | $RUN_URL |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Request"
+            echo ""
+            echo "POST https://q-reil.vercel.app/api/gmail-test-send"
+            echo ""
+            echo "\`\`\`json"
+            echo "{\"approval_token\":\"qag-qreil-0814-proof\",\"to\":\"stratanoble.co@gmail.com\",\"subject\":\"QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814\",\"body_text\":\"Q REIL Gmail message id proof. No reply needed.\"}"
+            echo "\`\`\`"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Result"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|--------|"
+            echo "| **Status** | $STATUS |"
+            echo "| **gmail_message_id** | ${GMAIL_MSG_ID:-*(none)*} |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## OCS verdict"
+            echo ""
+            echo "$PASS_VERDICT"
+          } > "$RECEIPT_0814"
+
+      - name: Upload receipt artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qag-qreil-gmail-message-id-proof-receipts
+          path: |
+            repo/proofs/q-reil/QAG-REIL-GMAIL-TEST-SEND-PROOF-0005-receipt.md
+            repo/clients/strata-noble-internal/proofs/ENGDEL-OPS-CORE-GMAIL-SENDER-0061-ops-email-send-gmail-receipt.md
+            repo/proofs/q-reil/QAG-QREIL-GMAIL-MESSAGE-ID-PROOF-0814-receipt.md
+
+      - name: Fail if not Sent
+        if: steps.post.outputs.status != 'Sent' || steps.post.outputs.gmail_message_id == ''
+        run: |
+          echo "OCS verdict: FAIL — POST did not return status=Sent with gmail_message_id"
+          exit 1

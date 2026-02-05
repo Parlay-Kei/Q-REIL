@@ -1,0 +1,14 @@
+{
+  "name": "@q-reil/connector-gmail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Gmail OAuth connector and 7-day ingestion for Q REIL",
+  "scripts": {
+    "sync": "node run-sync.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "googleapis": "^144.0.0"
+  }
+}

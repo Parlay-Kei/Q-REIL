@@ -8,7 +8,7 @@
  *
  * Prerequisites:
  *   - GCP OAuth client (Web) with redirect URI http://localhost:8765/callback
- *   - GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in env or scripts/oauth-proof/.env.local
+ *   - GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET (canonical) in env or .env.local. See docs/reil-core/OAUTH_ENV_CANON.md.
  *
  * Usage (from repo root):
  *   cd scripts/oauth-proof && npm install && npm run one-time-auth
@@ -23,20 +23,49 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { chromium } from 'playwright';
+import { getGmailOAuthEnv } from '../../connectors/gmail/lib/oauthEnvCanon.js';
+
+function sha256Hex(str) {
+  return crypto.createHash('sha256').update(str, 'utf8').digest('hex');
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORTS = [8765, 8766, 8767, 8768, 8769];
-const SCOPES = [
+const DEFAULT_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
 ].join(' ');
 const TOKENS_FILE = path.join(__dirname, '.tokens.json');
 
+/** Resolve scopes: env GMAIL_OAUTH_SCOPES (space-separated) overrides default. */
+function getScopes() {
+  const env = (process.env.GMAIL_OAUTH_SCOPES || '').trim();
+  return env || DEFAULT_SCOPES;
+}
+
+/** Parse OAUTH_REDIRECT_URI (e.g. http://localhost) into { port, pathPrefix }. */
+function parseRedirectUri(uri) {
+  if (!uri || !uri.trim()) return null;
+  try {
+    const u = new URL(uri.trim());
+    const port = u.port ? Number(u.port) : (u.protocol === 'https:' ? 443 : 80);
+    const pathPrefix = (u.pathname || '/').replace(/\/$/, '') || '';
+    return { port, pathPrefix, href: u.origin + (pathPrefix || '/') };
+  } catch {
+    return null;
+  }
+}
+
 function loadEnv() {
+  const ROOT = path.resolve(__dirname, '../..');
   const candidates = [
+    path.join(ROOT, '.env.local'),
     path.join(__dirname, '.env.local'),
-    path.join(__dirname, '../../q-reil/.env.local'),
+    path.join(ROOT, 'connectors/gmail/.env.local'),
+    path.join(ROOT, 'q-reil/.env.local'),
+    path.join(process.cwd(), '.env.local'),
   ];
   for (const envPath of candidates) {
     if (fs.existsSync(envPath)) {
@@ -48,8 +77,28 @@ function loadEnv() {
           process.env[m[1]] = val;
         }
       }
+      process.env.LOAD_ENV_SELECTED_FILE = envPath;
+      return envPath;
     }
   }
+  process.env.LOAD_ENV_SELECTED_FILE = '';
+  return null;
+}
+
+function printEnvSanityReceipt() {
+  const { env: oauthEnv, missing } = getGmailOAuthEnv(process.env);
+  const clientId = oauthEnv.GMAIL_CLIENT_ID;
+  const clientSecret = oauthEnv.GMAIL_CLIENT_SECRET;
+  const selected = process.env.LOAD_ENV_SELECTED_FILE || '(not set)';
+  console.error(JSON.stringify({
+    receipt: 'oauth_env_sanity',
+    client_id_present: !!clientId,
+    client_secret_present: !!clientSecret,
+    client_id_redacted: clientId ? `...${String(clientId).slice(-8)}` : '(missing)',
+    client_secret_redacted: clientSecret ? '[REDACTED]' : '(missing)',
+    load_env_selected_file: selected,
+    missing_canon_keys: missing,
+  }));
 }
 
 function base64URLEncode(buffer) {
@@ -89,13 +138,18 @@ async function exchangeCodeForTokens(code, codeVerifier, clientId, clientSecret,
   return res.json();
 }
 
-function createCallbackServer(port, ctx) {
-  const redirectUri = `http://localhost:${port}/callback`;
+function createCallbackServer(port, ctx, pathPrefix = '/callback') {
+  const base = `http://localhost:${port}`;
+  const redirectUri = pathPrefix ? `${base}${pathPrefix}` : base.replace(/\/$/, '') || base;
   ctx.redirectUri = redirectUri;
   return new Promise((resolve, reject) => {
     const server = http.createServer(async (req, res) => {
-      const url = new URL(req.url || '', `http://localhost:${port}`);
-      if (url.pathname !== '/callback') {
+      const url = new URL(req.url || '', base);
+      const pathname = url.pathname || '/';
+      const match = pathPrefix === '' || pathPrefix === '/'
+        ? (pathname === '/' || pathname === '')
+        : pathname === pathPrefix || pathname === pathPrefix + '/';
+      if (!match) {
         res.writeHead(404);
         res.end('Not found');
         return;
@@ -139,11 +193,20 @@ function createCallbackServer(port, ctx) {
           access_token: tokens.access_token,
           expires_at: expiresAt,
           scope: tokens.scope,
+          client_id: ctx.clientId,
+          redirect_uri: ctx.redirectUri,
+          client_secret_sha256: sha256Hex(ctx.clientSecret),
         };
         fs.writeFileSync(TOKENS_FILE, JSON.stringify(payload, null, 2), 'utf8');
         console.log('\n--- One-time auth success ---');
         console.log('Tokens written to:', TOKENS_FILE);
         console.log('Use refresh_token for indefinite agent use (no user interaction).');
+        console.error(JSON.stringify({
+          receipt: 'oauth_mint_success',
+          timestamp_iso: new Date().toISOString(),
+          scope_list: (tokens.scope || '').split(/\s+/).filter(Boolean),
+          refresh_token_present: !!tokens.refresh_token,
+        }));
       } catch (e) {
         console.error(e);
         ctx.error = e.message;
@@ -158,10 +221,12 @@ function createCallbackServer(port, ctx) {
 
 async function main() {
   loadEnv();
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  printEnvSanityReceipt();
+  const { env: oauthEnv, missing } = getGmailOAuthEnv(process.env);
+  const clientId = oauthEnv.GMAIL_CLIENT_ID;
+  const clientSecret = oauthEnv.GMAIL_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    console.error('Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (env or scripts/oauth-proof/.env.local).');
+    console.error('Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET (canonical). See docs/reil-core/OAUTH_ENV_CANON.md. Missing:', missing?.length ? missing : 'client credentials');
     process.exit(1);
   }
 
@@ -179,20 +244,30 @@ async function main() {
     redirectUri: null,
   };
 
-  const portEnv = process.env.PROOF_PORT ? [Number(process.env.PROOF_PORT)] : PORTS;
+  const customRedirect = parseRedirectUri(process.env.OAUTH_REDIRECT_URI);
+  const scopes = getScopes();
   let server;
   let portUsed;
-  for (const port of portEnv) {
-    try {
-      server = await createCallbackServer(port, ctx);
-      portUsed = port;
-      break;
-    } catch (e) {
-      if (e.code === 'EADDRINUSE') {
-        if (port === portEnv[portEnv.length - 1]) throw e;
-        continue;
+
+  if (customRedirect) {
+    portUsed = customRedirect.port;
+    const pathPrefix = customRedirect.pathPrefix === '/' ? '' : customRedirect.pathPrefix;
+    server = await createCallbackServer(portUsed, ctx, pathPrefix);
+    ctx.redirectUri = process.env.OAUTH_REDIRECT_URI.trim();
+  } else {
+    const portEnv = process.env.PROOF_PORT ? [Number(process.env.PROOF_PORT)] : PORTS;
+    for (const port of portEnv) {
+      try {
+        server = await createCallbackServer(port, ctx, '/callback');
+        portUsed = port;
+        break;
+      } catch (e) {
+        if (e.code === 'EADDRINUSE') {
+          if (port === portEnv[portEnv.length - 1]) throw e;
+          continue;
+        }
+        throw e;
       }
-      throw e;
     }
   }
 
@@ -201,7 +276,7 @@ async function main() {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: SCOPES,
+    scope: scopes,
     access_type: 'offline',
     prompt: 'consent',
     state,
@@ -210,10 +285,13 @@ async function main() {
   });
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${authParams.toString()}`;
 
-  if (portUsed !== 8765) {
+  if (customRedirect) {
+    console.log(`Using OAUTH_REDIRECT_URI: ${redirectUri}`);
+  } else if (portUsed !== 8765) {
     console.log(`Port 8765 in use; using ${portUsed}. Add ${redirectUri} to GCP OAuth client redirect URIs if not already there.`);
   }
   console.log(`Callback server: ${redirectUri}`);
+  console.log(`Scopes: ${scopes}`);
   console.log('Launching browser for one-time sign-in...');
 
   // Use installed Chrome or Edge so Google doesn't show "browser may not be secure"

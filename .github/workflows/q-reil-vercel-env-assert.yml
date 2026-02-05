@@ -1,0 +1,183 @@
+# PLATOPS-QREIL-ENV-ASSERT-CI-0811 / PLATOPS-REIL-VERCEL-ENV-ASSERT-CANON-UPDATE-0019
+# Vercel env assert in CI; canonical vs legacy key status; write receipts. workflow_dispatch. Uses VERCEL_TOKEN.
+
+name: Q REIL Vercel env assert
+
+on:
+  workflow_dispatch:
+
+jobs:
+  env-assert:
+    runs-on: ubuntu-latest
+    outputs:
+      lane1_ready: ${{ steps.canon.outputs.lane1_ready }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: repo
+
+      - name: Assert Vercel project env and capture results
+        id: assert
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          echo "## Gmail env keys (names and targets only, no values)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p repo/proofs/q-reil repo/proofs/reil-core
+          RESULTS="[]"
+          for key in GMAIL_CLIENT_ID GMAIL_CLIENT_SECRET GMAIL_REFRESH_TOKEN GMAIL_SENDER_ADDRESS; do
+            ENTRY=$(echo "$RESP" | jq -r --arg k "$key" '[.envs[] | select(.key == $k)] | .[0]')
+            if [ -z "$ENTRY" ] || [ "$ENTRY" = "null" ]; then
+              echo "- **$key**: MISSING" >> "$GITHUB_STEP_SUMMARY"
+              RESULTS=$(echo "$RESULTS" | jq --arg k "$key" '. + [{"key":$k,"exists":false,"production":false,"preview":false,"development":false}]')
+            else
+              PROD=$(echo "$ENTRY" | jq -r '.target | index("production") != null')
+              PREV=$(echo "$ENTRY" | jq -r '.target | index("preview") != null')
+              DEV=$(echo "$ENTRY" | jq -r '.target | index("development") != null')
+              TARGETS=$(echo "$ENTRY" | jq -r '.target | join(", ")')
+              echo "- **$key**: $TARGETS" >> "$GITHUB_STEP_SUMMARY"
+              RESULTS=$(echo "$RESULTS" | jq --arg k "$key" --argjson p "$PROD" --argjson v "$PREV" --argjson d "$DEV" '. + [{"key":$k,"exists":true,"production":$p,"preview":$v,"development":$d}]')
+            fi
+          done
+          echo "$RESULTS" > repo/proofs/q-reil/env-assert-results.json
+          PROD_COUNT=$(echo "$RESP" | jq -r '[.envs[] | select(.key == "GMAIL_CLIENT_ID" or .key == "GMAIL_CLIENT_SECRET" or .key == "GMAIL_REFRESH_TOKEN" or .key == "GMAIL_SENDER_ADDRESS") | select(.target[]? == "production")] | length')
+          echo "Keys in production: $PROD_COUNT/4"
+
+      - name: Canonical vs legacy status (0019)
+        id: canon
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/prj_VAiSllyEk27tnHDXagBt88h0h64j/env?teamId=team_DLPOODpWbIp8OubK6ngvbM1v")
+          CANON_RESULTS="[]"
+          LANE1_FAIL=0
+          for key in GMAIL_CLIENT_ID GMAIL_CLIENT_SECRET GMAIL_REFRESH_TOKEN GMAIL_SENDER_ADDRESS; do
+            CANON_ENTRY=$(echo "$RESP" | jq -r --arg k "$key" '[.envs[] | select(.key == $k)] | .[0]')
+            CANON_PROD=false
+            ALIAS_PROD=false
+            if [ -n "$CANON_ENTRY" ] && [ "$CANON_ENTRY" != "null" ]; then
+              CANON_PROD=$(echo "$CANON_ENTRY" | jq -r '.target | index("production") != null')
+            fi
+            if [ "$key" = "GMAIL_CLIENT_ID" ]; then
+              ALIAS_ENTRY=$(echo "$RESP" | jq -r '[.envs[] | select(.key == "GOOGLE_OAUTH_CLIENT_ID")] | .[0]')
+            elif [ "$key" = "GMAIL_CLIENT_SECRET" ]; then
+              ALIAS_ENTRY=$(echo "$RESP" | jq -r '[.envs[] | select(.key == "GOOGLE_OAUTH_CLIENT_SECRET")] | .[0]')
+            else
+              ALIAS_ENTRY=null
+            fi
+            if [ -n "$ALIAS_ENTRY" ] && [ "$ALIAS_ENTRY" != "null" ]; then
+              ALIAS_PROD=$(echo "$ALIAS_ENTRY" | jq -r '.target | index("production") != null')
+            fi
+            STATUS="both_missing"
+            if [ "$CANON_PROD" = "true" ]; then STATUS="canonical_present"; fi
+            if [ "$CANON_PROD" != "true" ] && [ "$ALIAS_PROD" = "true" ]; then STATUS="alias_only"; LANE1_FAIL=1; fi
+            CANON_RESULTS=$(echo "$CANON_RESULTS" | jq --arg k "$key" --arg s "$STATUS" --argjson cp "$CANON_PROD" --argjson ap "$ALIAS_PROD" '. + [{"key":$k,"status":$s,"canonical_in_production":$cp,"alias_only_in_production":$ap}]')
+          done
+          echo "$CANON_RESULTS" > repo/proofs/reil-core/env-assert-canon-results.json
+          echo "lane1_ready=$([ "$LANE1_FAIL" = "0" ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
+          echo "Canonical status written to repo/proofs/reil-core/env-assert-canon-results.json"
+
+      - name: Write receipt (0801)
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RECEIPT="repo/proofs/q-reil/PLATOPS-QREIL-ENV-ASSERT-CI-0801-receipt.md"
+          {
+            echo "# PLATOPS-QREIL-ENV-ASSERT-CI-0801 — Receipt"
+            echo ""
+            echo "**Mission:** OCS Q REIL Vercel Prod Env Assert (API) — Phase 1"
+            echo "**Spawn:** PLATOPS-QREIL-ENV-ASSERT-CI-RUN-0811"
+            echo "**Workflow:** \`.github/workflows/q-reil-vercel-env-assert.yml\`"
+            echo "**Project:** q-reil (prj_VAiSllyEk27tnHDXagBt88h0h64j)"
+            echo "**Team:** team_DLPOODpWbIp8OubK6ngvbM1v"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Acceptance"
+            echo ""
+            echo "- Vercel API confirms the four Gmail env key **names** exist (no values in logs or receipts)."
+            echo "- For each key: record whether it exists and which **target(s)** it is set for (production / preview / development)."
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Actions run"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|--------|"
+            echo "| **Workflow** | Q REIL Vercel env assert |"
+            echo "| **Run URL** | $RUN_URL |"
+          } > "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "---" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "## Key presence (names only, by target)" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "| Key | Exists | Production | Preview | Development |" >> "$RECEIPT"
+          echo "|-----|--------|------------|---------|-------------|" >> "$RECEIPT"
+          while read -r row; do
+            key=$(echo "$row" | jq -r '.key')
+            ex=$(echo "$row" | jq -r '.exists')
+            prod=$(echo "$row" | jq -r '.production')
+            prev=$(echo "$row" | jq -r '.preview')
+            dev=$(echo "$row" | jq -r '.development')
+            echo "| $key | $ex | $prod | $prev | $dev |" >> "$RECEIPT"
+          done < <(jq -c '.[]' repo/proofs/q-reil/env-assert-results.json)
+          echo "" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "## Notes" >> "$RECEIPT"
+          echo "" >> "$RECEIPT"
+          echo "- Workflow uses secret \`VERCEL_TOKEN\`. No env values are printed." >> "$RECEIPT"
+          echo "- Phase 2 (PLATOPS-QREIL-ENV-SET-PROD-CI-0802) sets or copies any key missing in Production; then re-run this workflow and update this receipt so all four show Production." >> "$RECEIPT"
+
+      - name: Write canon receipt (0019)
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RECEIPT="repo/proofs/reil-core/PLATOPS-REIL-VERCEL-ENV-ASSERT-CANON-0019-receipt.md"
+          {
+            echo "# PLATOPS-REIL-VERCEL-ENV-ASSERT-CANON-0019 — Receipt"
+            echo ""
+            echo "**Mission:** PLATOPS-REIL-VERCEL-ENV-ASSERT-CANON-UPDATE-0019"
+            echo "**Workflow:** \`.github/workflows/q-reil-vercel-env-assert.yml\`"
+            echo "**Project:** q-reil (prj_VAiSllyEk27tnHDXagBt88h0h64j)"
+            echo "**Date:** $TIMESTAMP"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Canonical status (Production)"
+            echo ""
+            echo "| Key | Canonical present | Alias only present | Status |"
+            echo "|-----|-------------------|---------------------|--------|"
+          } > "$RECEIPT"
+          while read -r row; do
+            key=$(echo "$row" | jq -r '.key')
+            cp=$(echo "$row" | jq -r '.canonical_in_production')
+            ap=$(echo "$row" | jq -r '.alias_only_in_production')
+            status=$(echo "$row" | jq -r '.status')
+            echo "| $key | $cp | $ap | $status |" >> "$RECEIPT"
+          done < <(jq -c '.[]' repo/proofs/reil-core/env-assert-canon-results.json)
+          {
+            echo ""
+            echo "**Lane 1 readiness:** If any key shows \`alias_only\` in Production (canonical missing, legacy alias present), Lane 1 is **FAIL** until canonical keys are set in Vercel Production."
+            echo ""
+            echo "**Run URL:** $RUN_URL"
+          } >> "$RECEIPT"
+
+      - name: Upload receipt artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: platrops-env-assert-receipts
+          path: |
+            repo/proofs/q-reil/PLATOPS-QREIL-ENV-ASSERT-CI-0801-receipt.md
+            repo/proofs/reil-core/PLATOPS-REIL-VERCEL-ENV-ASSERT-CANON-0019-receipt.md

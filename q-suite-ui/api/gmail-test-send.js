@@ -1,9 +1,11 @@
+/* eslint-env node */
 /**
  * ENGDEL-REIL-GMAIL-TEST-ENDPOINT-0004: Internal Gmail test send endpoint.
- * Uses Vercel runtime env (GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN, GMAIL_SENDER_ADDRESS).
+ * Uses canonical OAuth env via getGmailOAuthEnv (GMAIL_*). See docs/reil-core/OAUTH_ENV_CANON.md.
  * Requires approval_token; enforces allowlist (stratanoble.co@gmail.com). No secrets in logs or response.
  */
 import https from 'https';
+import { getGmailOAuthEnv } from '../lib/oauthEnvCanon.js';
 
 const ALLOWLIST = ['stratanoble.co@gmail.com'];
 const DEFAULT_SENDER = 'stratanoble.co@gmail.com';
@@ -105,10 +107,11 @@ export default function handler(req, res) {
   const subject = (req.query?.subject || req.body?.subject || 'Q REIL Gmail test').trim();
   const bodyText = (req.query?.body_text || req.body?.body_text || req.body?.body || 'Q REIL Gmail test send. No reply needed.').trim();
 
-  const clientId = process.env.GMAIL_CLIENT_ID;
-  const clientSecret = process.env.GMAIL_CLIENT_SECRET;
-  const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
-  const senderAddress = process.env.GMAIL_SENDER_ADDRESS || DEFAULT_SENDER;
+  const { env: oauthEnv } = getGmailOAuthEnv(process.env);
+  const clientId = oauthEnv.GMAIL_CLIENT_ID;
+  const clientSecret = oauthEnv.GMAIL_CLIENT_SECRET;
+  const refreshToken = oauthEnv.GMAIL_REFRESH_TOKEN;
+  const senderAddress = oauthEnv.GMAIL_SENDER_ADDRESS || DEFAULT_SENDER;
 
   if (!clientId || !clientSecret || !refreshToken) {
     return res.status(503).json({ status: 'error', reason: 'Gmail OAuth not configured' });

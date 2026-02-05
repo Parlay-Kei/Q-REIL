@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DEFAULT_DOCUMENT_TITLE, TITLE_REIL_THREAD } from '../constants/brand';
+import { USE_INBOX_SEED_DATA } from '../constants/inbox';
 import { ReilBreadcrumb } from '../components/layout/ReilBreadcrumb';
 import {
   ArrowLeftIcon,
   PaperclipIcon,
   LinkIcon,
+  CheckIcon,
   MoreHorizontalIcon,
   ReplyIcon,
   ForwardIcon,
   ArchiveIcon,
-  TagIcon,
-  CheckIcon,
-  XIcon,
   FileTextIcon,
   ImageIcon,
   FileSpreadsheetIcon,
@@ -21,166 +20,136 @@ import {
   SparklesIcon,
   UserIcon,
   BuildingIcon,
-  BriefcaseIcon } from
-'lucide-react';
+  BriefcaseIcon,
+} from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
-const messages = [
-{
-  id: 'msg-001',
-  from: {
-    name: 'James Wilson',
-    email: 'james@meridiancp.com'
-  },
-  to: [
-  {
-    name: 'Alex Morgan',
-    email: 'alex@stratanoble.com'
-  }],
-
-  timestamp: 'Today at 10:42 AM',
-  content: `Hi Alex,
-
-Following up on our discussion about the investment terms. I have reviewed the latest draft and have a few comments that I'd like to discuss.
-
-The key points are:
-1. The valuation methodology needs clarification in Section 3.2
-2. We'd like to propose an adjustment to the liquidation preferences
-3. The timeline for the due diligence process seems aggressive
-
-Could we schedule a call this week to go through these items? I'm available Thursday or Friday afternoon.
-
-Best regards,
-James`,
-  attachments: [
-  {
-    name: 'Investment_Terms_v3.pdf',
-    type: 'pdf',
-    size: '2.4 MB'
-  },
-  {
-    name: 'Financial_Model.xlsx',
-    type: 'xlsx',
-    size: '1.8 MB'
-  }]
-
-},
-{
-  id: 'msg-002',
-  from: {
-    name: 'Alex Morgan',
-    email: 'alex@stratanoble.com'
-  },
-  to: [
-  {
-    name: 'James Wilson',
-    email: 'james@meridiancp.com'
-  }],
-
-  timestamp: 'Yesterday at 4:15 PM',
-  content: `James,
-
-Thank you for the detailed feedback. I've noted all your points and will prepare responses for our call.
-
-Thursday at 2 PM works well for me. I'll send a calendar invite shortly.
-
-In the meantime, I'm attaching the updated due diligence checklist that addresses some of your timeline concerns.
-
-Best,
-Alex`,
-  attachments: [
-  {
-    name: 'DD_Checklist_Updated.pdf',
-    type: 'pdf',
-    size: '890 KB'
-  }]
-
-},
-{
-  id: 'msg-003',
-  from: {
-    name: 'James Wilson',
-    email: 'james@meridiancp.com'
-  },
-  to: [
-  {
-    name: 'Alex Morgan',
-    email: 'alex@stratanoble.com'
-  }],
-
-  timestamp: 'Yesterday at 2:30 PM',
-  content: `Alex,
-
-I wanted to share the initial investment proposal for your review. This outlines our terms and expectations for the partnership.
-
-Please let me know if you have any questions or concerns.
-
-Best,
-James`,
-  attachments: []
-}];
+import { EmptyState, ErrorState } from '../components/ui/EmptyState';
+import { fetchThreadWithMessages } from '../lib/inboxApi';
+import type { MessageRow } from '../types/inbox';
+import { SEED_MESSAGES, SEED_THREAD_SUBJECT } from '../data/seedInbox';
 
 const suggestedMatches = [
-{
-  id: 'match-001',
-  type: 'Deal',
-  name: 'Meridian Capital Partners',
-  confidence: 95,
-  reason: 'Sender domain matches deal company',
-  icon: BriefcaseIcon
-},
-{
-  id: 'match-002',
-  type: 'Contact',
-  name: 'James Wilson',
-  confidence: 92,
-  reason: 'Email address matches existing contact',
-  icon: UserIcon
-},
-{
-  id: 'match-003',
-  type: 'Company',
-  name: 'Meridian Capital Partners',
-  confidence: 88,
-  reason: 'Company name mentioned in subject',
-  icon: BuildingIcon
-}];
+  { id: 'match-001', type: 'Deal', name: 'Meridian Capital Partners', confidence: 95, reason: 'Sender domain matches deal company', icon: BriefcaseIcon },
+  { id: 'match-002', type: 'Contact', name: 'James Wilson', confidence: 92, reason: 'Email address matches existing contact', icon: UserIcon },
+  { id: 'match-003', type: 'Company', name: 'Meridian Capital Partners', confidence: 88, reason: 'Company name mentioned in subject', icon: BuildingIcon },
+];
 
 const attachmentIcons: Record<string, typeof FileTextIcon> = {
   pdf: FileTextIcon,
   xlsx: FileSpreadsheetIcon,
   docx: FileTextIcon,
   png: ImageIcon,
-  jpg: ImageIcon
+  jpg: ImageIcon,
 };
+
 export function ThreadDetail() {
   const navigate = useNavigate();
-  const { threadId } = useParams();
-  const [expandedMessages, setExpandedMessages] = useState<string[]>([
-  messages[0].id]
-  );
+  const { threadId } = useParams<{ threadId: string }>();
+  const [subject, setSubject] = useState('');
+  const [messages, setMessages] = useState<MessageRow[]>([]);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error' | 'notfound'>('loading');
+  const [expandedMessages, setExpandedMessages] = useState<string[]>([]);
   const [linkedRecords, setLinkedRecords] = useState<string[]>([]);
-  const toggleMessage = (messageId: string) => {
-    setExpandedMessages((prev) =>
-    prev.includes(messageId) ?
-    prev.filter((id) => id !== messageId) :
-    [...prev, messageId]
-    );
-  };
-  const linkRecord = (matchId: string) => {
-    setLinkedRecords((prev) =>
-    prev.includes(matchId) ?
-    prev.filter((id) => id !== matchId) :
-    [...prev, matchId]
-    );
-  };
-  const allAttachments = messages.flatMap((m) => m.attachments);
+
   useEffect(() => {
     document.title = TITLE_REIL_THREAD;
     return () => { document.title = DEFAULT_DOCUMENT_TITLE };
   }, []);
+
+  useEffect(() => {
+    if (USE_INBOX_SEED_DATA) {
+      setSubject(SEED_THREAD_SUBJECT);
+      setMessages(SEED_MESSAGES);
+      setExpandedMessages(SEED_MESSAGES[0] ? [SEED_MESSAGES[0].id] : []);
+      setLoadState('ready');
+      return;
+    }
+    if (!threadId) {
+      setLoadState('notfound');
+      return;
+    }
+    setLoadState('loading');
+    fetchThreadWithMessages(threadId).then(({ subject: s, messages: msgs, error }) => {
+      if (error) {
+        setSubject('');
+        setMessages([]);
+        setLoadState('error');
+        return;
+      }
+      setSubject(s);
+      setMessages(msgs);
+      setExpandedMessages(msgs[0] ? [msgs[0].id] : []);
+      setLoadState('ready');
+    });
+  }, [threadId]);
+
+  const toggleMessage = (messageId: string) => {
+    setExpandedMessages((prev) =>
+      prev.includes(messageId) ? prev.filter((id) => id !== messageId) : [...prev, messageId]
+    );
+  };
+  const linkRecord = (matchId: string) => {
+    setLinkedRecords((prev) =>
+      prev.includes(matchId) ? prev.filter((id) => id !== matchId) : [...prev, matchId]
+    );
+  };
+  const allAttachments = messages.flatMap((m) => m.attachments);
+  if (loadState === 'loading' || loadState === 'notfound') {
+    return (
+      <div className="h-full flex flex-col p-6">
+        <ReilBreadcrumb items={[{ label: 'Inbox', path: '/reil/inbox' }, { label: 'Thread' }]} className="mb-3" />
+        <button
+          onClick={() => navigate('/reil/inbox')}
+          className="flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-4"
+        >
+          <ArrowLeftIcon size={18} />
+          <span className="text-sm">Back to Inbox</span>
+        </button>
+        {loadState === 'loading' && (
+          <p className="text-text-tertiary">Loading thread…</p>
+        )}
+        {loadState === 'notfound' && (
+          <EmptyState
+            icon={FileTextIcon}
+            title="Thread not found"
+            description="This thread may have been removed or the link is invalid."
+            action={{ label: 'Back to Inbox', onClick: () => navigate('/reil/inbox') }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (loadState === 'error') {
+    return (
+      <div className="h-full flex flex-col p-6">
+        <ReilBreadcrumb items={[{ label: 'Inbox', path: '/reil/inbox' }, { label: 'Thread' }]} className="mb-3" />
+        <button
+          onClick={() => navigate('/reil/inbox')}
+          className="flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors mb-4"
+        >
+          <ArrowLeftIcon size={18} />
+          <span className="text-sm">Back to Inbox</span>
+        </button>
+        <ErrorState
+          title="Failed to load thread"
+          description="We couldn't load this thread from the database. Check Supabase config and RLS/auth."
+          onRetry={() => threadId && fetchThreadWithMessages(threadId).then(({ subject: s, messages: msgs, error }) => {
+            if (!error) {
+              setSubject(s);
+              setMessages(msgs);
+              setExpandedMessages(msgs[0] ? [msgs[0].id] : []);
+              setLoadState('ready');
+            }
+          })}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -213,7 +182,7 @@ export function ThreadDetail() {
         </div>
 
         <h1 className="text-xl font-semibold text-text-primary mb-2">
-          RE: Q3 Investment Proposal - Final Review
+          {subject || '(No subject)'}
         </h1>
 
         <div className="flex items-center gap-3">
@@ -222,7 +191,7 @@ export function ThreadDetail() {
             <PaperclipIcon size={14} />
             <span className="text-sm">{allAttachments.length} attachments</span>
           </div>
-          <span className="text-sm text-text-quaternary">3 messages</span>
+          <span className="text-sm text-text-quaternary">{messages.length} messages</span>
         </div>
       </div>
 

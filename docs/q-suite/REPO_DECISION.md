@@ -31,7 +31,7 @@
 
 ### Why New Repo?
 
-1. **Strata Noble convention:** Receipts reference `strata-nobles-projects` (Vercel), `AspireNexis` (GitHub). New app = new repo under org.
+1. **Canonical repo:** Single source of truth is **Parlay-Kei/Q-REIL** ([ops/canonical/QREIL_REPO.json](../../ops/canonical/QREIL_REPO.json)). Vercel team: `strata-nobles-projects`. New app = same repo, app root `q-suite-ui`.
 2. **Least disruptive path:** Keep artifact as Vite + React. No framework migration unless a hard constraint (e.g., SSR for auth) emerges.
 3. **Single source of truth:** q-suite-ui becomes the canonical Q Suite frontend; q-reil serves as REIL API/backend or is consumed by q-suite-ui.
 
@@ -43,7 +43,7 @@
 |------------|-------|
 | Vercel team | `strata-nobles-projects` |
 | Suite label | "Q by Strata Noble" |
-| GitHub org | AspireNexis (from handoffs) |
+| GitHub org | Parlay-Kei (canonical repo: [ops/canonical/QREIL_REPO.json](../../ops/canonical/QREIL_REPO.json)) |
 | Env secrets | Vault references, never committed |
 | CI | typecheck, lint, build |
 

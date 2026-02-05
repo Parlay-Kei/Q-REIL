@@ -7,7 +7,7 @@ import {
   BriefcaseIcon,
   ClockIcon } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-interface TimelineEvent {
+export interface TimelineEvent {
   id: string;
   type: 'document' | 'email' | 'link' | 'user' | 'deal' | 'system';
   title: string;

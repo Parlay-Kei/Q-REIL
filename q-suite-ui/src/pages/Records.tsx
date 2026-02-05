@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DEFAULT_DOCUMENT_TITLE, TITLE_REIL_SUBVIEW } from '../constants/brand';
+import { REIL_DEFAULT_ORG_ID } from '../constants/inbox';
 import { ReilBreadcrumb } from '../components/layout/ReilBreadcrumb';
 import {
   UsersIcon,
@@ -8,12 +9,12 @@ import {
   HomeIcon,
   BriefcaseIcon,
   PlusIcon,
-  SearchIcon,
   FilterIcon,
   MoreHorizontalIcon,
   LinkIcon,
-  ChevronRightIcon } from
-'lucide-react';
+  ChevronRightIcon,
+  DownloadIcon,
+} from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
@@ -21,6 +22,11 @@ import { Badge } from '../components/ui/Badge';
 import { Avatar } from '../components/ui/Avatar';
 import { Tabs } from '../components/ui/Tabs';
 import { Table, StatusPill } from '../components/ui/Table';
+import { Skeleton } from '../components/ui/Skeleton';
+import { fetchReilRecords } from '../lib/reilRecordsApi';
+import { recordsToCsv, recordsToJson, downloadCsv, downloadJson } from '../lib/reilExport';
+import type { RecordRow } from '../types/reil-core';
+
 interface RecordsProps {
   defaultTab?: 'contacts' | 'companies' | 'properties' | 'deals';
 }
@@ -143,11 +149,28 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [searchQuery, setSearchQuery] = useState('');
+  const [reilRecords, setReilRecords] = useState<RecordRow[]>([]);
+  const [reilLoading, setReilLoading] = useState(false);
   const pageLabel = defaultTab === 'deals' ? 'Deals' : 'Records';
+
   useEffect(() => {
     document.title = TITLE_REIL_SUBVIEW(pageLabel);
     return () => { document.title = DEFAULT_DOCUMENT_TITLE };
   }, [pageLabel]);
+
+  useEffect(() => {
+    if ((activeTab === 'properties' || activeTab === 'deals') && REIL_DEFAULT_ORG_ID) {
+      setReilLoading(true);
+      fetchReilRecords({
+        recordType: activeTab === 'deals' ? 'deal' : 'property',
+        titleContains: searchQuery.trim() || undefined,
+      }).then(({ records, error }) => {
+        setReilRecords(error ? [] : records);
+      }).finally(() => setReilLoading(false));
+    } else if (activeTab === 'properties' || activeTab === 'deals') {
+      setReilRecords([]);
+    }
+  }, [activeTab, searchQuery]);
   const contactColumns = [
   {
     key: 'name',
@@ -288,6 +311,32 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {(activeTab === 'properties' || activeTab === 'deals') && reilRecords.length > 0 && (
+            <>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={DownloadIcon}
+                onClick={() => {
+                  const csv = recordsToCsv(reilRecords);
+                  downloadCsv(csv, `reil-records-${activeTab}-${new Date().toISOString().slice(0, 10)}.csv`);
+                }}
+              >
+                Export CSV
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={DownloadIcon}
+                onClick={() => {
+                  const json = recordsToJson(reilRecords);
+                  downloadJson(json, `reil-records-${activeTab}-${new Date().toISOString().slice(0, 10)}.json`);
+                }}
+              >
+                Export JSON
+              </Button>
+            </>
+          )}
           <Button variant="secondary" leftIcon={LinkIcon}>
             Quick link
           </Button>
@@ -349,14 +398,85 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
 
       }
 
-      {(activeTab === 'properties' || activeTab === 'deals') &&
-      <Card className="p-12 text-center">
+      {(activeTab === 'properties' || activeTab === 'deals') && REIL_DEFAULT_ORG_ID && (
+        reilLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Card key={i} className="p-4">
+                <Skeleton variant="text" width="40%" className="mb-2" />
+                <Skeleton variant="text" width="20%" height={14} />
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Table
+            columns={[
+              {
+                key: 'title',
+                header: 'Title',
+                width: '40%',
+                render: (value: string, row: RecordRow) => {
+                  const RecordIcon = activeTab === 'deals' ? BriefcaseIcon : HomeIcon;
+                  return (
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-surface-elevated flex items-center justify-center">
+                        <RecordIcon size={18} className="text-text-tertiary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-text-primary">{row.title}</p>
+                        <p className="text-xs text-text-tertiary">{row.record_type_id}</p>
+                      </div>
+                    </div>
+                  );
+                },
+              },
+              {
+                key: 'status',
+                header: 'Status',
+                width: '15%',
+                render: (value: string) => <Badge color="success" size="sm">{value}</Badge>,
+              },
+              {
+                key: 'updated_at',
+                header: 'Updated',
+                width: '25%',
+                render: (value: string) => (
+                  <span className="text-text-secondary font-mono text-sm">
+                    {new Date(value).toLocaleString()}
+                  </span>
+                ),
+              },
+              {
+                key: 'tags',
+                header: 'Tags',
+                width: '20%',
+                render: (value: string[]) => (
+                  <div className="flex flex-wrap gap-1">
+                    {(value ?? []).slice(0, 3).map((tag) => (
+                      <Badge key={tag} color="neutral" size="sm">{tag}</Badge>
+                    ))}
+                  </div>
+                ),
+              },
+            ]}
+            data={reilRecords}
+            onRowClick={(row) => navigate(`/reil/records/${row.id}`)}
+            rowActions={() => (
+              <button className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors">
+                <MoreHorizontalIcon size={16} />
+              </button>
+            )}
+          />
+        )
+      )}
+
+      {(activeTab === 'properties' || activeTab === 'deals') && !REIL_DEFAULT_ORG_ID && (
+        <Card className="p-12 text-center">
           <p className="text-text-tertiary">
-            {activeTab === 'properties' ? 'Properties' : 'Deals'} view coming
-            soon
+            {activeTab === 'properties' ? 'Properties' : 'Deals'} require VITE_REIL_ORG_ID.
           </p>
         </Card>
-      }
+      )}
     </div>);
 
 }

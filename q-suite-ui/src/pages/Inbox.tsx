@@ -1,21 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DEFAULT_DOCUMENT_TITLE, TITLE_REIL_SUBVIEW } from '../constants/brand';
+import { USE_INBOX_SEED_DATA, USE_REIL_CORE_INBOX } from '../constants/inbox';
 import { ReilBreadcrumb } from '../components/layout/ReilBreadcrumb';
 import {
   MailIcon,
-  SearchIcon,
-  FilterIcon,
   MoreHorizontalIcon,
   PaperclipIcon,
   LinkIcon,
   CheckIcon,
-  ChevronDownIcon,
   RefreshCwIcon,
-  ArchiveIcon,
   TagIcon,
-  XIcon } from
-'lucide-react';
+} from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Card } from '../components/ui/Card';
@@ -24,118 +20,14 @@ import { Avatar } from '../components/ui/Avatar';
 import { Select } from '../components/ui/Select';
 import { Tabs } from '../components/ui/Tabs';
 import { EmptyState, ErrorState } from '../components/ui/EmptyState';
-import { Skeleton, SkeletonCard } from '../components/ui/Skeleton';
+import { Skeleton } from '../components/ui/Skeleton';
+import { fetchThreads } from '../lib/inboxApi';
+import { fetchReilInboxItems, type InboxFilters } from '../lib/reilInboxApi';
+import type { ThreadRow } from '../types/inbox';
+import type { InboxItemRow } from '../types/reil-core';
+import { SEED_THREADS, seedThreadsAsReilItems } from '../data/seedInbox';
 
 type ViewState = 'default' | 'loading' | 'empty' | 'error';
-const threads = [
-{
-  id: 'thr-001',
-  subject: 'RE: Q3 Investment Proposal - Final Review',
-  from: {
-    name: 'James Wilson',
-    email: 'james@meridiancp.com'
-  },
-  preview:
-  'Following up on our discussion about the investment terms. I have reviewed the latest draft and have a few comments...',
-  timestamp: '10:42 AM',
-  isUnread: true,
-  hasAttachments: true,
-  attachmentCount: 3,
-  linkedRecord: null,
-  labels: ['Important']
-},
-{
-  id: 'thr-002',
-  subject: 'Due Diligence Documents - Apex Holdings',
-  from: {
-    name: 'Sarah Chen',
-    email: 'sarah@apexholdings.com'
-  },
-  preview:
-  'Please find attached the requested financial statements and audit reports for your review...',
-  timestamp: '9:15 AM',
-  isUnread: true,
-  hasAttachments: true,
-  attachmentCount: 5,
-  linkedRecord: {
-    type: 'Deal',
-    name: 'Apex Holdings'
-  },
-  labels: []
-},
-{
-  id: 'thr-003',
-  subject: 'Contract Review - Urgent Action Required',
-  from: {
-    name: 'Michael Torres',
-    email: 'mtorres@pinnacle.io'
-  },
-  preview:
-  'Our legal team has reviewed the contract and has some concerns regarding the liability clauses...',
-  timestamp: 'Yesterday',
-  isUnread: false,
-  hasAttachments: true,
-  attachmentCount: 1,
-  linkedRecord: {
-    type: 'Deal',
-    name: 'Pinnacle Investments'
-  },
-  labels: ['Urgent']
-},
-{
-  id: 'thr-004',
-  subject: 'Partnership Opportunity Discussion',
-  from: {
-    name: 'Emily Park',
-    email: 'emily@horizongroup.com'
-  },
-  preview:
-  'I wanted to reach out regarding a potential partnership opportunity that I believe could be mutually beneficial...',
-  timestamp: 'Yesterday',
-  isUnread: false,
-  hasAttachments: false,
-  attachmentCount: 0,
-  linkedRecord: null,
-  labels: []
-},
-{
-  id: 'thr-005',
-  subject: 'Meeting Follow-up: Sterling Partners',
-  from: {
-    name: 'David Kim',
-    email: 'dkim@sterling.com'
-  },
-  preview:
-  'Thank you for taking the time to meet with us yesterday. As discussed, I am attaching the proposal...',
-  timestamp: '2 days ago',
-  isUnread: false,
-  hasAttachments: true,
-  attachmentCount: 2,
-  linkedRecord: {
-    type: 'Contact',
-    name: 'David Kim'
-  },
-  labels: []
-},
-{
-  id: 'thr-006',
-  subject: 'RE: Budget Approval Request',
-  from: {
-    name: 'Lisa Anderson',
-    email: 'lisa@venturecap.com'
-  },
-  preview:
-  'The budget has been approved by the board. Please proceed with the next steps as outlined...',
-  timestamp: '3 days ago',
-  isUnread: false,
-  hasAttachments: false,
-  attachmentCount: 0,
-  linkedRecord: {
-    type: 'Deal',
-    name: 'Venture Capital Fund'
-  },
-  labels: []
-}];
 
 const filterTabs = [
 {
@@ -161,14 +53,52 @@ const filterTabs = [
 
 export function Inbox() {
   const navigate = useNavigate();
-  const [viewState, setViewState] = useState<ViewState>('default');
+  const [threads, setThreads] = useState<ThreadRow[]>([]);
+  const [reilItems, setReilItems] = useState<InboxItemRow[]>([]);
+  const [viewState, setViewState] = useState<ViewState>('loading');
   const [activeFilter, setActiveFilter] = useState('all');
   const [selectedThreads, setSelectedThreads] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [reilFilters, setReilFilters] = useState<InboxFilters>({});
+
   useEffect(() => {
     document.title = TITLE_REIL_SUBVIEW('Inbox');
     return () => { document.title = DEFAULT_DOCUMENT_TITLE };
   }, []);
+
+  useEffect(() => {
+    if (USE_INBOX_SEED_DATA) {
+      setThreads(SEED_THREADS);
+      setViewState('default');
+      return;
+    }
+    if (USE_REIL_CORE_INBOX) {
+      setViewState('loading');
+      fetchReilInboxItems(reilFilters).then(({ items, error }) => {
+        if (error) {
+          setReilItems([]);
+          setViewState('error');
+          return;
+        }
+        // Live mode: prefer DAL (Gmail) rows; if none, fall back to seed (ENGDEL-REIL-UI-LIVE-SWITCH-0027).
+        const displayItems = items.length > 0 ? items : seedThreadsAsReilItems();
+        setReilItems(displayItems);
+        setViewState(displayItems.length === 0 ? 'empty' : 'default');
+      });
+      return;
+    }
+    setViewState('loading');
+    fetchThreads().then(({ threads: list, error }) => {
+      if (error) {
+        setThreads([]);
+        setViewState('error');
+        return;
+      }
+      setThreads(list);
+      setViewState(list.length === 0 ? 'empty' : 'default');
+    });
+  }, [USE_REIL_CORE_INBOX, reilFilters.sender, reilFilters.dateFrom, reilFilters.dateTo, reilFilters.type, reilFilters.reviewRequired]);
+
   const toggleThreadSelection = (threadId: string) => {
     setSelectedThreads((prev) =>
     prev.includes(threadId) ?
@@ -176,29 +106,58 @@ export function Inbox() {
     [...prev, threadId]
     );
   };
+  const listLength = USE_REIL_CORE_INBOX ? reilItems.length : threads.length;
   const selectAll = () => {
-    if (selectedThreads.length === threads.length) {
+    if (selectedThreads.length === listLength) {
       setSelectedThreads([]);
     } else {
-      setSelectedThreads(threads.map((t) => t.id));
+      setSelectedThreads(USE_REIL_CORE_INBOX ? reilItems.map((i) => i.id) : threads.map((t) => t.id));
     }
   };
-  // Demo state switcher
-  const renderStateDemo = () =>
-  <div className="flex items-center gap-2 mb-4">
-      <span className="text-xs text-text-quaternary">Demo:</span>
-      {(['default', 'loading', 'empty', 'error'] as ViewState[]).map(
-      (state) =>
-      <button
-        key={state}
-        onClick={() => setViewState(state)}
-        className={`px-2 py-1 text-xs rounded ${viewState === state ? 'bg-accent-cyan-dim text-accent-cyan' : 'bg-surface-elevated text-text-tertiary'}`}>
+  const refetch = () => {
+    if (USE_INBOX_SEED_DATA) return;
+    if (USE_REIL_CORE_INBOX) {
+      setViewState('loading');
+      fetchReilInboxItems(reilFilters).then(({ items, error }) => {
+        if (error) {
+          setReilItems([]);
+          setViewState('error');
+          return;
+        }
+        // Live mode: prefer DAL (Gmail) rows; if none, fall back to seed (ENGDEL-REIL-UI-LIVE-SWITCH-0027).
+        const displayItems = items.length > 0 ? items : seedThreadsAsReilItems();
+        setReilItems(displayItems);
+        setViewState(displayItems.length === 0 ? 'empty' : 'default');
+      });
+      return;
+    }
+    setViewState('loading');
+    fetchThreads().then(({ threads: list, error }) => {
+      if (error) {
+        setThreads([]);
+        setViewState('error');
+        return;
+      }
+      setThreads(list);
+      setViewState(list.length === 0 ? 'empty' : 'default');
+    });
+  };
 
+  const renderStateDemo = () =>
+    USE_INBOX_SEED_DATA ? (
+      <div className="flex items-center gap-2 mb-4">
+        <span className="text-xs text-text-quaternary">Demo (seed):</span>
+        {(['default', 'loading', 'empty', 'error'] as ViewState[]).map((state) => (
+          <button
+            key={state}
+            onClick={() => setViewState(state)}
+            className={`px-2 py-1 text-xs rounded ${viewState === state ? 'bg-accent-cyan-dim text-accent-cyan' : 'bg-surface-elevated text-text-tertiary'}`}
+          >
             {state}
           </button>
-
-    )}
-    </div>;
+        ))}
+      </div>
+    ) : null;
 
   return (
     <div className="p-6 lg:p-8 max-w-[1600px] mx-auto">
@@ -234,97 +193,80 @@ export function Inbox() {
             </h3>
 
             <div className="space-y-4">
+              {USE_REIL_CORE_INBOX && (
+                <Input
+                  label="Sender"
+                  placeholder="Filter by sender..."
+                  value={reilFilters.sender ?? ''}
+                  onChange={(e) => setReilFilters((f) => ({ ...f, sender: e.target.value || undefined }))}
+                />
+              )}
               <Select
                 label="Status"
                 options={[
-                {
-                  value: 'all',
-                  label: 'All threads'
-                },
-                {
-                  value: 'unlinked',
-                  label: 'Unlinked only'
-                },
-                {
-                  value: 'linked',
-                  label: 'Linked only'
-                }]
-                }
+                  { value: 'all', label: USE_REIL_CORE_INBOX ? 'All items' : 'All threads' },
+                  { value: 'unlinked', label: 'Unlinked only' },
+                  { value: 'linked', label: 'Linked only' },
+                ]}
                 value="all"
-                onChange={() => {}} />
-
-
+                onChange={() => {}}
+              />
+              {USE_REIL_CORE_INBOX && (
+                <Select
+                  label="Review required"
+                  options={[
+                    { value: 'any', label: 'Any' },
+                    { value: 'yes', label: 'Review required only' },
+                  ]}
+                  value={reilFilters.reviewRequired === true ? 'yes' : 'any'}
+                  onChange={(v) => setReilFilters((f) => ({ ...f, reviewRequired: v === 'yes' }))}
+                />
+              )}
               <Select
-                label="Has Attachments"
+                label="Type"
                 options={[
-                {
-                  value: 'any',
-                  label: 'Any'
-                },
-                {
-                  value: 'yes',
-                  label: 'With attachments'
-                },
-                {
-                  value: 'no',
-                  label: 'No attachments'
-                }]
-                }
-                value="any"
-                onChange={() => {}} />
-
-
-              <Select
-                label="Linked Type"
-                options={[
-                {
-                  value: 'any',
-                  label: 'Any type'
-                },
-                {
-                  value: 'deal',
-                  label: 'Deals'
-                },
-                {
-                  value: 'contact',
-                  label: 'Contacts'
-                },
-                {
-                  value: 'company',
-                  label: 'Companies'
-                }]
-                }
-                value="any"
-                onChange={() => {}} />
-
-
+                  { value: 'any', label: 'Any type' },
+                  { value: 'gmail', label: 'Gmail' },
+                  { value: 'message', label: 'Message' },
+                ]}
+                value={USE_REIL_CORE_INBOX ? (reilFilters.type ?? 'any') : 'any'}
+                onChange={(v) => USE_REIL_CORE_INBOX && setReilFilters((f) => ({ ...f, type: (v === 'any' ? undefined : v) as string | undefined }))}
+              />
               <Select
                 label="Time Range"
                 options={[
-                {
-                  value: 'all',
-                  label: 'All time'
-                },
-                {
-                  value: 'today',
-                  label: 'Today'
-                },
-                {
-                  value: 'week',
-                  label: 'This week'
-                },
-                {
-                  value: 'month',
-                  label: 'This month'
-                }]
+                  { value: 'all', label: 'All time' },
+                  { value: 'today', label: 'Today' },
+                  { value: 'week', label: 'This week' },
+                  { value: 'month', label: 'This month' },
+                ]}
+                value={
+                  USE_REIL_CORE_INBOX
+                    ? (reilFilters.dateFrom ? 'week' : 'all')
+                    : 'all'
                 }
-                value="all"
-                onChange={() => {}} />
-
+                onChange={(v) => {
+                  if (!USE_REIL_CORE_INBOX) return;
+                  if (v === 'all') setReilFilters((f) => ({ ...f, dateFrom: undefined, dateTo: undefined }));
+                  else {
+                    const to = new Date().toISOString();
+                    const from = new Date();
+                    if (v === 'today') from.setHours(0, 0, 0, 0);
+                    else if (v === 'week') from.setDate(from.getDate() - 7);
+                    else if (v === 'month') from.setMonth(from.getMonth() - 1);
+                    setReilFilters((f) => ({ ...f, dateFrom: from.toISOString(), dateTo: to }));
+                  }
+                }}
+              />
             </div>
 
             <div className="mt-6 pt-4 border-t border-stroke-hairline">
-              <Button variant="ghost" size="sm" className="w-full">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={() => USE_REIL_CORE_INBOX && setReilFilters({})}
+              >
                 Clear all filters
               </Button>
             </div>
@@ -410,8 +352,8 @@ export function Inbox() {
           {viewState === 'error' &&
           <ErrorState
             title="Failed to load inbox"
-            description="We couldn't connect to your email provider. Please check your connection and try again."
-            onRetry={() => setViewState('default')} />
+            description="We couldn't load threads from the database. Check Supabase config and RLS/auth."
+            onRetry={refetch} />
 
           }
 
@@ -420,123 +362,125 @@ export function Inbox() {
               {/* Select all header */}
               <div className="px-4 py-3 flex items-center gap-4 bg-surface-primary/40">
                 <button
-                onClick={selectAll}
-                className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedThreads.length === threads.length ? 'bg-accent-cyan border-accent-cyan' : selectedThreads.length > 0 ? 'bg-accent-cyan/50 border-accent-cyan' : 'border-stroke-subtle hover:border-stroke-medium'}`}>
-
-                  {selectedThreads.length > 0 &&
-                <CheckIcon size={12} className="text-bg-deep" />
-                }
+                  onClick={selectAll}
+                  className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${selectedThreads.length === listLength ? 'bg-accent-cyan border-accent-cyan' : selectedThreads.length > 0 ? 'bg-accent-cyan/50 border-accent-cyan' : 'border-stroke-subtle hover:border-stroke-medium'}`}
+                >
+                  {selectedThreads.length > 0 && <CheckIcon size={12} className="text-bg-deep" />}
                 </button>
                 <span className="text-sm text-text-tertiary">
-                  {selectedThreads.length > 0 ?
-                `${selectedThreads.length} of ${threads.length} selected` :
-                'Select all'}
+                  {selectedThreads.length > 0 ? `${selectedThreads.length} of ${listLength} selected` : 'Select all'}
                 </span>
               </div>
 
-              {/* Thread rows */}
-              {threads.map((thread) => {
-              const isSelected = selectedThreads.includes(thread.id);
-              return (
-                <div
-                  key={thread.id}
-                  className={`px-4 py-4 flex items-start gap-4 transition-colors cursor-pointer ${isSelected ? 'bg-accent-cyan-dim/30' : 'hover:bg-surface-hover'}`}
-                  onClick={() => navigate(`/reil/inbox/${thread.id}`)}>
-
-                    {/* Checkbox */}
-                    <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleThreadSelection(thread.id);
-                    }}
-                    className={`w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 mt-0.5 ${isSelected ? 'bg-accent-cyan border-accent-cyan' : 'border-stroke-subtle hover:border-stroke-medium'}`}>
-
-                      {isSelected &&
-                    <CheckIcon size={12} className="text-bg-deep" />
-                    }
-                    </button>
-
-                    {/* Avatar */}
-                    <Avatar name={thread.from.name} size="sm" />
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-4 mb-1">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span
-                          className={`text-sm truncate ${thread.isUnread ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
-
-                            {thread.from.name}
-                          </span>
-                          {thread.isUnread &&
-                        <span className="w-2 h-2 rounded-full bg-accent-cyan shrink-0" />
-                        }
+              {/* REIL Core: raw items with normalized status */}
+              {USE_REIL_CORE_INBOX &&
+                reilItems.map((item) => {
+                  const isSelected = selectedThreads.includes(item.id);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`px-4 py-4 flex items-start gap-4 transition-colors cursor-pointer ${isSelected ? 'bg-accent-cyan-dim/30' : 'hover:bg-surface-hover'}`}
+                      onClick={() => navigate(`/reil/inbox/item/${item.id}`)}
+                    >
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleThreadSelection(item.id); }}
+                        className={`w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 mt-0.5 ${isSelected ? 'bg-accent-cyan border-accent-cyan' : 'border-stroke-subtle hover:border-stroke-medium'}`}
+                      >
+                        {isSelected && <CheckIcon size={12} className="text-bg-deep" />}
+                      </button>
+                      <Avatar name={item.sender.split('<')[0].trim() || item.sender} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-4 mb-1">
+                          <span className="text-sm truncate text-text-secondary">{item.sender}</span>
+                          <span className="text-xs text-text-quaternary whitespace-nowrap">{item.date}</span>
                         </div>
-                        <span className="text-xs text-text-quaternary whitespace-nowrap">
-                          {thread.timestamp}
-                        </span>
+                        <h3 className="text-sm mb-1 truncate text-text-primary">{item.subject}</h3>
+                        <p className="text-sm text-text-tertiary truncate mb-2">{item.preview}</p>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {item.hasAttachments && (
+                            <div className="flex items-center gap-1 text-text-quaternary">
+                              <PaperclipIcon size={12} />
+                              <span className="text-xs">{item.attachmentCount}</span>
+                            </div>
+                          )}
+                          {item.normalized ? (
+                            <Badge color="success" size="sm" dot>Normalized</Badge>
+                          ) : (
+                            <Badge color="warning" size="sm">Raw</Badge>
+                          )}
+                          {item.matchStatus != null && (
+                            <Badge color="neutral" size="sm">Match: {item.matchStatus}</Badge>
+                          )}
+                          {item.itemConfidence != null && (
+                            <span className="text-xs text-text-quaternary">Conf: {Math.round(item.itemConfidence * 100)}%</span>
+                          )}
+                          {item.reviewRequired && <Badge color="danger" size="sm">Review required</Badge>}
+                          <Badge color="neutral" size="sm">{item.type}</Badge>
+                        </div>
                       </div>
-
-                      <h3
-                      className={`text-sm mb-1 truncate ${thread.isUnread ? 'font-medium text-text-primary' : 'text-text-secondary'}`}>
-
-                        {thread.subject}
-                      </h3>
-
-                      <p className="text-sm text-text-tertiary truncate mb-2">
-                        {thread.preview}
-                      </p>
-
-                      {/* Meta row */}
-                      <div className="flex items-center gap-3 flex-wrap">
-                        {thread.hasAttachments &&
-                      <div className="flex items-center gap-1 text-text-quaternary">
-                            <PaperclipIcon size={12} />
-                            <span className="text-xs">
-                              {thread.attachmentCount}
-                            </span>
-                          </div>
-                      }
-
-                        {thread.linkedRecord ?
-                      <Badge color="success" size="sm" dot>
-                            {thread.linkedRecord.type}:{' '}
-                            {thread.linkedRecord.name}
-                          </Badge> :
-
-                      <Badge color="warning" size="sm">
-                            Unlinked
-                          </Badge>
-                      }
-
-                        {thread.labels.map((label) =>
-                      <Badge
-                        key={label}
-                        color={
-                        label === 'Urgent' ?
-                        'danger' :
-                        label === 'Important' ?
-                        'violet' :
-                        'neutral'
-                        }
-                        size="sm">
-
-                            {label}
-                          </Badge>
-                      )}
-                      </div>
+                      <button onClick={(e) => e.stopPropagation()} className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-elevated transition-colors">
+                        <MoreHorizontalIcon size={16} />
+                      </button>
                     </div>
+                  );
+                })}
 
-                    {/* Actions */}
-                    <button
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-elevated transition-colors">
-
-                      <MoreHorizontalIcon size={16} />
-                    </button>
-                  </div>);
-
-            })}
+              {/* Legacy: thread rows */}
+              {!USE_REIL_CORE_INBOX &&
+                threads.map((thread) => {
+                  const isSelected = selectedThreads.includes(thread.id);
+                  return (
+                    <div
+                      key={thread.id}
+                      className={`px-4 py-4 flex items-start gap-4 transition-colors cursor-pointer ${isSelected ? 'bg-accent-cyan-dim/30' : 'hover:bg-surface-hover'}`}
+                      onClick={() => navigate(`/reil/inbox/${thread.id}`)}
+                    >
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleThreadSelection(thread.id); }}
+                        className={`w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 mt-0.5 ${isSelected ? 'bg-accent-cyan border-accent-cyan' : 'border-stroke-subtle hover:border-stroke-medium'}`}
+                      >
+                        {isSelected && <CheckIcon size={12} className="text-bg-deep" />}
+                      </button>
+                      <Avatar name={thread.from.name} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-4 mb-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-sm truncate ${thread.isUnread ? 'font-semibold text-text-primary' : 'text-text-secondary'}`}>
+                              {thread.from.name}
+                            </span>
+                            {thread.isUnread && <span className="w-2 h-2 rounded-full bg-accent-cyan shrink-0" />}
+                          </div>
+                          <span className="text-xs text-text-quaternary whitespace-nowrap">{thread.timestamp}</span>
+                        </div>
+                        <h3 className={`text-sm mb-1 truncate ${thread.isUnread ? 'font-medium text-text-primary' : 'text-text-secondary'}`}>
+                          {thread.subject}
+                        </h3>
+                        <p className="text-sm text-text-tertiary truncate mb-2">{thread.preview}</p>
+                        <div className="flex items-center gap-3 flex-wrap">
+                          {thread.hasAttachments && (
+                            <div className="flex items-center gap-1 text-text-quaternary">
+                              <PaperclipIcon size={12} />
+                              <span className="text-xs">{thread.attachmentCount}</span>
+                            </div>
+                          )}
+                          {thread.linkedRecord ? (
+                            <Badge color="success" size="sm" dot>{thread.linkedRecord.type}: {thread.linkedRecord.name}</Badge>
+                          ) : (
+                            <Badge color="warning" size="sm">Unlinked</Badge>
+                          )}
+                          {thread.labels.map((label) => (
+                            <Badge key={label} color={label === 'Urgent' ? 'danger' : label === 'Important' ? 'violet' : 'neutral'} size="sm">
+                              {label}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <button onClick={(e) => e.stopPropagation()} className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-elevated transition-colors">
+                        <MoreHorizontalIcon size={16} />
+                      </button>
+                    </div>
+                  );
+                })}
             </Card>
           }
         </div>
