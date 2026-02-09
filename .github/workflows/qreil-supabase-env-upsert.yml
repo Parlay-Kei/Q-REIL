@@ -1,0 +1,358 @@
+# PLATOPS-QREIL-SUPABASE-ENV-SET-0017: Upsert Supabase environment variables to Vercel Production and GitHub Actions
+# workflow_dispatch. Uses VERCEL_TOKEN. Reads SUPABASE_SERVICE_ROLE_KEY from GitHub secret.
+# Writes receipts with execution proof.
+
+name: Q REIL Supabase Env Upsert
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upsert-supabase-env:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upsert NEXT_PUBLIC_SUPABASE_URL to Vercel Production
+        id: upsert-url
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          SUPABASE_URL="https://umzuncubiizoomoxlgts.supabase.co"
+          
+          # Check if key exists
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          EXISTING=$(echo "$RESP" | jq -r --arg k "NEXT_PUBLIC_SUPABASE_URL" '[.envs[] | select(.key == $k)] | .[0]')
+          
+          if [ "$EXISTING" != "null" ] && [ -n "$EXISTING" ]; then
+            ENV_ID=$(echo "$EXISTING" | jq -r '.id')
+            # Update existing
+            HTTP=$(curl -sS -w "%{http_code}" -o /tmp/update_out -X PATCH \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"NEXT_PUBLIC_SUPABASE_URL\",\"value\":\"${SUPABASE_URL}\",\"target\":[\"production\"],\"type\":\"plain\"}" \
+              "https://api.vercel.com/v9/projects/${PROJECT_ID}/env/${ENV_ID}?teamId=${TEAM_ID}")
+            if [ "$HTTP" = "200" ]; then
+              echo "ACTION=updated" >> $GITHUB_OUTPUT
+              echo "ENV_ID=${ENV_ID}" >> $GITHUB_OUTPUT
+            else
+              echo "ACTION=failed" >> $GITHUB_OUTPUT
+              echo "HTTP_CODE=${HTTP}" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          else
+            # Create new
+            HTTP=$(curl -sS -w "%{http_code}" -o /tmp/create_out -X POST \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"NEXT_PUBLIC_SUPABASE_URL\",\"value\":\"${SUPABASE_URL}\",\"target\":[\"production\"],\"type\":\"plain\"}" \
+              "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+            if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
+              ENV_ID=$(cat /tmp/create_out | jq -r '.uid // .id')
+              echo "ACTION=created" >> $GITHUB_OUTPUT
+              echo "ENV_ID=${ENV_ID}" >> $GITHUB_OUTPUT
+            else
+              echo "ACTION=failed" >> $GITHUB_OUTPUT
+              echo "HTTP_CODE=${HTTP}" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+
+      - name: Upsert SUPABASE_SERVICE_ROLE_KEY to Vercel Production
+        id: upsert-service-key
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          echo "::add-mask::$SERVICE_ROLE_KEY"
+          
+          if [ -z "$SERVICE_ROLE_KEY" ]; then
+            echo "ERROR: SUPABASE_SERVICE_ROLE_KEY secret not found in GitHub Actions"
+            echo "Set it via: gh secret set SUPABASE_SERVICE_ROLE_KEY --body '<key-value>'"
+            exit 1
+          fi
+          
+          # Check if key exists
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          EXISTING=$(echo "$RESP" | jq -r --arg k "SUPABASE_SERVICE_ROLE_KEY" '[.envs[] | select(.key == $k)] | .[0]')
+          
+          if [ "$EXISTING" != "null" ] && [ -n "$EXISTING" ]; then
+            ENV_ID=$(echo "$EXISTING" | jq -r '.id')
+            # Update existing
+            HTTP=$(curl -sS -w "%{http_code}" -o /tmp/update_out -X PATCH \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"SUPABASE_SERVICE_ROLE_KEY\",\"value\":\"${SERVICE_ROLE_KEY}\",\"target\":[\"production\"],\"type\":\"encrypted\"}" \
+              "https://api.vercel.com/v9/projects/${PROJECT_ID}/env/${ENV_ID}?teamId=${TEAM_ID}")
+            if [ "$HTTP" = "200" ]; then
+              echo "ACTION=updated" >> $GITHUB_OUTPUT
+              echo "ENV_ID=${ENV_ID}" >> $GITHUB_OUTPUT
+            else
+              echo "ACTION=failed" >> $GITHUB_OUTPUT
+              echo "HTTP_CODE=${HTTP}" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          else
+            # Create new
+            HTTP=$(curl -sS -w "%{http_code}" -o /tmp/create_out -X POST \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"SUPABASE_SERVICE_ROLE_KEY\",\"value\":\"${SERVICE_ROLE_KEY}\",\"target\":[\"production\"],\"type\":\"encrypted\"}" \
+              "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+            if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
+              ENV_ID=$(cat /tmp/create_out | jq -r '.uid // .id')
+              echo "ACTION=created" >> $GITHUB_OUTPUT
+              echo "ENV_ID=${ENV_ID}" >> $GITHUB_OUTPUT
+            else
+              echo "ACTION=failed" >> $GITHUB_OUTPUT
+              echo "HTTP_CODE=${HTTP}" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+
+      - name: Verify SUPABASE_SERVICE_ROLE_KEY exists in GitHub Actions
+        id: verify-gh-secret
+        run: |
+          if [ -z "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" ]; then
+            echo "EXISTS=false" >> $GITHUB_OUTPUT
+            echo "ERROR: SUPABASE_SERVICE_ROLE_KEY secret not found in GitHub Actions"
+            exit 1
+          else
+            echo "EXISTS=true" >> $GITHUB_OUTPUT
+            echo "SUPABASE_SERVICE_ROLE_KEY secret exists in GitHub Actions"
+          fi
+
+      - name: Verify keys exist in Vercel Production
+        id: verify-keys
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          
+          URL_EXISTS=$(echo "$RESP" | jq -r '[.envs[] | select(.key == "NEXT_PUBLIC_SUPABASE_URL") | select(.target[]? == "production")] | length')
+          KEY_EXISTS=$(echo "$RESP" | jq -r '[.envs[] | select(.key == "SUPABASE_SERVICE_ROLE_KEY") | select(.target[]? == "production")] | length')
+          
+          echo "URL_EXISTS=${URL_EXISTS}" >> $GITHUB_OUTPUT
+          echo "KEY_EXISTS=${KEY_EXISTS}" >> $GITHUB_OUTPUT
+          
+          if [ "$URL_EXISTS" = "0" ] || [ "$KEY_EXISTS" = "0" ]; then
+            echo "Verification failed: Keys not found in Production"
+            exit 1
+          fi
+
+      - name: Write Vercel receipt
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          URL_ACTION: ${{ steps.upsert-url.outputs.ACTION }}
+          KEY_ACTION: ${{ steps.upsert-service-key.outputs.ACTION }}
+          URL_EXISTS: ${{ steps.verify-keys.outputs.URL_EXISTS }}
+          KEY_EXISTS: ${{ steps.verify-keys.outputs.KEY_EXISTS }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RECEIPT="proofs/qreil/supabase/VERCEL_SUPABASE_ENV_RECEIPT.md"
+          mkdir -p proofs/qreil/supabase
+          
+          {
+            echo "# Vercel Supabase Env Receipt — PLATOPS-QREIL-SUPABASE-ENV-SET-0017"
+            echo ""
+            echo "**Mission:** PLATOPS-QREIL-SUPABASE-ENV-SET-0017"
+            echo "**Owner:** OCS → PLATOPS → QAG"
+            echo "**Date:** $TIMESTAMP"
+            echo "**Scope:** Set Supabase environment variables in Vercel Production for Q REIL."
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 1. Execution Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| **Workflow** | Q REIL Supabase Env Upsert |"
+            echo "| **Run URL** | $RUN_URL |"
+            echo "| **Execution Time** | $TIMESTAMP |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 2. Environment Variables Set"
+            echo ""
+            echo "| Key Name | Action | Status |"
+            echo "|----------|--------|--------|"
+            echo "| **NEXT_PUBLIC_SUPABASE_URL** | $URL_ACTION | ✅ Success |"
+            echo "| **SUPABASE_SERVICE_ROLE_KEY** | $KEY_ACTION | ✅ Success |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 3. Verification"
+            echo ""
+            echo "| Key Name | Exists in Production |"
+            echo "|----------|---------------------|"
+            echo "| **NEXT_PUBLIC_SUPABASE_URL** | ✅ Yes ($URL_EXISTS entry) |"
+            echo "| **SUPABASE_SERVICE_ROLE_KEY** | ✅ Yes ($KEY_EXISTS entry) |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 4. Storage Rules"
+            echo ""
+            echo "| Key Name | Type | Scope | Client Exposure |"
+            echo "|----------|------|-------|-----------------|"
+            echo "| **NEXT_PUBLIC_SUPABASE_URL** | plain | Production | ✅ Public (client-side accessible) |"
+            echo "| **SUPABASE_SERVICE_ROLE_KEY** | encrypted | Production | ❌ Server-only (not exposed to client) |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 5. QAG Acceptance Checks"
+            echo ""
+            echo "- [x] **Evidence shows keys exist in Vercel Production:**"
+            echo "  - ✅ NEXT_PUBLIC_SUPABASE_URL exists in Production"
+            echo "  - ✅ SUPABASE_SERVICE_ROLE_KEY exists in Production"
+            echo "  - Evidence: Workflow verification step"
+            echo ""
+            echo "- [x] **No secret values exposed:**"
+            echo "  - ✅ Values masked in workflow logs"
+            echo "  - ✅ Receipt shows key names only"
+            echo "  - Evidence: This receipt"
+            echo ""
+            echo "- [x] **Storage rules followed:**"
+            echo "  - ✅ NEXT_PUBLIC_SUPABASE_URL is plain type (public)"
+            echo "  - ✅ SUPABASE_SERVICE_ROLE_KEY is encrypted type (server-only)"
+            echo "  - Evidence: Workflow sets correct types"
+            echo ""
+            echo "- [x] **Verdict:** ✅ **PASS**"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 6. Receipt Status"
+            echo ""
+            echo "| Criterion | Status |"
+            echo "|-----------|--------|"
+            echo "| NEXT_PUBLIC_SUPABASE_URL set | ✅ Completed |"
+            echo "| SUPABASE_SERVICE_ROLE_KEY set | ✅ Completed |"
+            echo "| Keys verified | ✅ Completed |"
+            echo "| QAG acceptance | ✅ PASS |"
+            echo ""
+            echo "**Status:** ✅ **COMPLETE** — Vercel Production Supabase environment variables set successfully."
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 7. References"
+            echo ""
+            echo "- [SUPABASE_DISCOVERY_RECEIPT.md](./SUPABASE_DISCOVERY_RECEIPT.md) — Supabase discovery receipt"
+            echo "- [GHA_SUPABASE_SECRET_RECEIPT.md](./GHA_SUPABASE_SECRET_RECEIPT.md) — GitHub Actions secret receipt"
+            echo "- [docs/00_PROJECT/handoffs/Q_REIL_SUPABASE_PROJECT_REF.md](../../docs/00_PROJECT/handoffs/Q_REIL_SUPABASE_PROJECT_REF.md) — Supabase project reference"
+          } > "$RECEIPT"
+          
+          echo "Receipt written to $RECEIPT"
+
+      - name: Write GitHub Actions secret receipt
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SECRET_EXISTS: ${{ steps.verify-gh-secret.outputs.EXISTS }}
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          RECEIPT="proofs/qreil/supabase/GHA_SUPABASE_SECRET_RECEIPT.md"
+          mkdir -p proofs/qreil/supabase
+          
+          {
+            echo "# GitHub Actions Supabase Secret Receipt — PLATOPS-QREIL-SUPABASE-ENV-SET-0017"
+            echo ""
+            echo "**Mission:** PLATOPS-QREIL-SUPABASE-ENV-SET-0017"
+            echo "**Owner:** OCS → PLATOPS → QAG"
+            echo "**Date:** $TIMESTAMP"
+            echo "**Scope:** Verify SUPABASE_SERVICE_ROLE_KEY exists as GitHub Actions secret for Q REIL."
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 1. Execution Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| **Workflow** | Q REIL Supabase Env Upsert |"
+            echo "| **Run URL** | $RUN_URL |"
+            echo "| **Execution Time** | $TIMESTAMP |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 2. GitHub Actions Secret"
+            echo ""
+            echo "| Secret Name | Status |"
+            echo "|-------------|--------|"
+            echo "| **SUPABASE_SERVICE_ROLE_KEY** | $([ \"$SECRET_EXISTS\" = \"true\" ] && echo '✅ Present' || echo '❌ Missing') |"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 3. Purpose"
+            echo ""
+            echo "**SUPABASE_SERVICE_ROLE_KEY** is used by:"
+            echo "- GitHub Actions workflows that need server-side database access"
+            echo "- Ingestion jobs (e.g., Gmail connector sync)"
+            echo "- Admin operations requiring RLS bypass"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 4. QAG Acceptance Checks"
+            echo ""
+            if [ "$SECRET_EXISTS" = "true" ]; then
+              echo "- [x] **SUPABASE_SERVICE_ROLE_KEY exists in GitHub Actions:**"
+              echo "  - ✅ Secret present"
+              echo "  - Evidence: Workflow verification step"
+              echo ""
+              echo "- [x] **No secret values exposed:**"
+              echo "  - ✅ Receipt shows key name only"
+              echo "  - Evidence: This receipt"
+              echo ""
+              echo "- [x] **Verdict:** ✅ **PASS**"
+            else
+              echo "- [ ] **SUPABASE_SERVICE_ROLE_KEY exists in GitHub Actions:**"
+              echo "  - ❌ Secret missing"
+              echo "  - Action required: Set via \`gh secret set SUPABASE_SERVICE_ROLE_KEY --body '<key-value>'\`"
+              echo ""
+              echo "- [x] **Verdict:** ❌ **FAIL**"
+            fi
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 5. Receipt Status"
+            echo ""
+            echo "| Criterion | Status |"
+            echo "|-----------|--------|"
+            if [ "$SECRET_EXISTS" = "true" ]; then
+              echo "| SUPABASE_SERVICE_ROLE_KEY verified | ✅ Completed |"
+              echo "| QAG acceptance | ✅ PASS |"
+              echo ""
+              echo "**Status:** ✅ **COMPLETE** — GitHub Actions secret verified."
+            else
+              echo "| SUPABASE_SERVICE_ROLE_KEY verified | ❌ Missing |"
+              echo "| QAG acceptance | ❌ FAIL |"
+              echo ""
+              echo "**Status:** ❌ **INCOMPLETE** — Secret must be set before workflow can succeed."
+            fi
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 6. References"
+            echo ""
+            echo "- [SUPABASE_DISCOVERY_RECEIPT.md](./SUPABASE_DISCOVERY_RECEIPT.md) — Supabase discovery receipt"
+            echo "- [VERCEL_SUPABASE_ENV_RECEIPT.md](./VERCEL_SUPABASE_ENV_RECEIPT.md) — Vercel environment variables receipt"
+            echo "- [docs/00_PROJECT/handoffs/Q_REIL_SUPABASE_PROJECT_REF.md](../../docs/00_PROJECT/handoffs/Q_REIL_SUPABASE_PROJECT_REF.md) — Supabase project reference"
+          } > "$RECEIPT"
+          
+          echo "Receipt written to $RECEIPT"
+
+      - name: Upload receipt artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: platrops-qreil-supabase-env-receipts
+          path: proofs/qreil/supabase/*.md
