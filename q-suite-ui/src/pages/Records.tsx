@@ -27,6 +27,70 @@ import { fetchReilRecords } from '../lib/reilRecordsApi';
 import { recordsToCsv, recordsToJson, downloadCsv, downloadJson } from '../lib/reilExport';
 import type { RecordRow } from '../types/reil-core';
 
+/** Seed deals data for demo fallback when VITE_REIL_ORG_ID is missing */
+const SEED_DEALS: RecordRow[] = [
+  {
+    id: 'deal-001',
+    org_id: 'demo-org',
+    record_type: 'deal',
+    record_type_id: 'deal-type-001',
+    title: 'Q3 Investment Proposal',
+    status: 'active',
+    owner_id: null,
+    tags: ['Investment', 'Q3'],
+    created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'deal-002',
+    org_id: 'demo-org',
+    record_type: 'deal',
+    record_type_id: 'deal-type-002',
+    title: 'Apex Holdings Due Diligence',
+    status: 'active',
+    owner_id: null,
+    tags: ['Due Diligence', 'Acquisition'],
+    created_at: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'deal-003',
+    org_id: 'demo-org',
+    record_type: 'deal',
+    record_type_id: 'deal-type-003',
+    title: 'Pinnacle Investments Partnership',
+    status: 'negotiation',
+    owner_id: null,
+    tags: ['Partnership', 'Strategic'],
+    created_at: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'deal-004',
+    org_id: 'demo-org',
+    record_type: 'deal',
+    record_type_id: 'deal-type-004',
+    title: 'Oakwood Acquisition',
+    status: 'active',
+    owner_id: null,
+    tags: ['Acquisition', 'Real Estate'],
+    created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+  {
+    id: 'deal-005',
+    org_id: 'demo-org',
+    record_type: 'deal',
+    record_type_id: 'deal-type-005',
+    title: 'Tech Startup Alpha Series A',
+    status: 'active',
+    owner_id: null,
+    tags: ['Venture Capital', 'Series A'],
+    created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+    updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+  },
+];
+
 interface RecordsProps {
   defaultTab?: 'contacts' | 'companies' | 'properties' | 'deals';
 }
@@ -151,6 +215,7 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [reilRecords, setReilRecords] = useState<RecordRow[]>([]);
   const [reilLoading, setReilLoading] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const pageLabel = defaultTab === 'deals' ? 'Deals' : 'Records';
 
   useEffect(() => {
@@ -161,14 +226,24 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
   useEffect(() => {
     if ((activeTab === 'properties' || activeTab === 'deals') && REIL_DEFAULT_ORG_ID) {
       setReilLoading(true);
+      setIsDemoMode(false);
       fetchReilRecords({
         recordType: activeTab === 'deals' ? 'deal' : 'property',
         titleContains: searchQuery.trim() || undefined,
       }).then(({ records, error }) => {
-        setReilRecords(error ? [] : records);
+        if (error) {
+          // Fail open: show demo data on error
+          setReilRecords(activeTab === 'deals' ? SEED_DEALS : []);
+          setIsDemoMode(true);
+        } else {
+          setReilRecords(records);
+          setIsDemoMode(false);
+        }
       }).finally(() => setReilLoading(false));
     } else if (activeTab === 'properties' || activeTab === 'deals') {
-      setReilRecords([]);
+      // Fail open: show demo data when org ID is missing
+      setReilRecords(activeTab === 'deals' ? SEED_DEALS : []);
+      setIsDemoMode(true);
     }
   }, [activeTab, searchQuery]);
   const contactColumns = [
@@ -309,6 +384,13 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
           <p className="text-text-secondary">
             Manage contacts, companies, properties, and deals.
           </p>
+          {isDemoMode && (activeTab === 'deals' || activeTab === 'properties') && (
+            <div className="mt-3">
+              <Badge color="warning" size="sm">
+                Demo tenant not configured. Showing demo data.
+              </Badge>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {(activeTab === 'properties' || activeTab === 'deals') && reilRecords.length > 0 && (
@@ -398,7 +480,7 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
 
       }
 
-      {(activeTab === 'properties' || activeTab === 'deals') && REIL_DEFAULT_ORG_ID && (
+      {(activeTab === 'properties' || activeTab === 'deals') && (
         reilLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
@@ -527,13 +609,6 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
         )
       )}
 
-      {(activeTab === 'properties' || activeTab === 'deals') && !REIL_DEFAULT_ORG_ID && (
-        <Card className="p-12 text-center">
-          <p className="text-text-tertiary">
-            {activeTab === 'properties' ? 'Properties' : 'Deals'} require VITE_REIL_ORG_ID.
-          </p>
-        </Card>
-      )}
     </div>);
 
 }

@@ -4,7 +4,10 @@
   "framework": null,
   "installCommand": "npm install",
   "rewrites": [
+    { "source": "/q-reil", "destination": "/reil" },
+    { "source": "/q-reil/(.*)", "destination": "/reil/$1" },
     { "source": "/reil", "destination": "/index.html" },
-    { "source": "/reil/:path*", "destination": "/index.html" }
+    { "source": "/reil/:path*", "destination": "/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
