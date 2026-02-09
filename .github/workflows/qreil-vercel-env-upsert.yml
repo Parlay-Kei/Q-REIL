@@ -13,10 +13,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Read client secret from ops artifact
+      - name: Read client secret from GitHub secret
         id: read-secret
+        env:
+          CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
         run: |
-          CLIENT_SECRET=$(jq -r '.installed.client_secret' ops/google/q-suite-reil-gmail-connector.json)
           echo "CLIENT_SECRET_LENGTH=${#CLIENT_SECRET}" >> $GITHUB_OUTPUT
           echo "::add-mask::$CLIENT_SECRET"
 
@@ -73,11 +74,11 @@ jobs:
         id: upsert-client-secret
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
         run: |
           set -e
           PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
           TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
-          CLIENT_SECRET=$(jq -r '.installed.client_secret' ops/google/q-suite-reil-gmail-connector.json)
           echo "::add-mask::$CLIENT_SECRET"
           
           # Check if key exists
