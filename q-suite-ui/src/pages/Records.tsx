@@ -410,21 +410,78 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
           </div>
         ) : (
           <Table
-            columns={[
+            columns={activeTab === 'deals' ? [
               {
                 key: 'title',
-                header: 'Title',
-                width: '40%',
+                header: 'Deal Name',
+                width: '35%',
                 render: (value: string, row: RecordRow) => {
-                  const RecordIcon = activeTab === 'deals' ? BriefcaseIcon : HomeIcon;
                   return (
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-surface-elevated flex items-center justify-center">
-                        <RecordIcon size={18} className="text-text-tertiary" />
+                      <div className="w-10 h-10 rounded-lg bg-accent-cyan-dim flex items-center justify-center">
+                        <BriefcaseIcon size={18} className="text-accent-cyan" />
                       </div>
                       <div>
                         <p className="font-medium text-text-primary">{row.title}</p>
-                        <p className="text-xs text-text-tertiary">{row.record_type_id}</p>
+                        <p className="text-xs text-text-tertiary">Deal ID: {row.record_type_id}</p>
+                      </div>
+                    </div>
+                  );
+                },
+              },
+              {
+                key: 'status',
+                header: 'Stage',
+                width: '15%',
+                render: (value: string) => <Badge color="cyan" size="sm">{value || 'Active'}</Badge>,
+              },
+              {
+                key: 'updated_at',
+                header: 'Last Activity',
+                width: '20%',
+                render: (value: string) => (
+                  <span className="text-text-secondary font-mono text-sm">
+                    {new Date(value).toLocaleDateString()}
+                  </span>
+                ),
+              },
+              {
+                key: 'tags',
+                header: 'Deal Type',
+                width: '15%',
+                render: (value: string[]) => (
+                  <div className="flex flex-wrap gap-1">
+                    {(value ?? []).slice(0, 2).map((tag) => (
+                      <Badge key={tag} color="violet" size="sm">{tag}</Badge>
+                    ))}
+                    {(!value || value.length === 0) && (
+                      <Badge color="neutral" size="sm">General</Badge>
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'id',
+                header: 'Value',
+                width: '15%',
+                render: (value: string) => (
+                  <span className="text-text-secondary text-sm">—</span>
+                ),
+              },
+            ] : [
+              {
+                key: 'title',
+                header: 'Property Address',
+                width: '40%',
+                render: (value: string, row: RecordRow) => {
+                  return (
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-surface-elevated flex items-center justify-center">
+                        <HomeIcon size={18} className="text-text-tertiary" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-text-primary">{row.title}</p>
+                        <p className="text-xs text-text-tertiary">Property ID: {row.record_type_id}</p>
                       </div>
                     </div>
                   );
@@ -434,7 +491,7 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
                 key: 'status',
                 header: 'Status',
                 width: '15%',
-                render: (value: string) => <Badge color="success" size="sm">{value}</Badge>,
+                render: (value: string) => <Badge color="success" size="sm">{value || 'Available'}</Badge>,
               },
               {
                 key: 'updated_at',
@@ -448,7 +505,7 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
               },
               {
                 key: 'tags',
-                header: 'Tags',
+                header: 'Property Type',
                 width: '20%',
                 render: (value: string[]) => (
                   <div className="flex flex-wrap gap-1">
@@ -460,7 +517,7 @@ export function Records({ defaultTab = 'contacts' }: RecordsProps) {
               },
             ]}
             data={reilRecords}
-            onRowClick={(row) => navigate(`/reil/records/${row.id}`)}
+            onRowClick={(row) => navigate(activeTab === 'deals' ? `/reil/deals/${row.id}` : `/reil/records/${row.id}`)}
             rowActions={() => (
               <button className="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-colors">
                 <MoreHorizontalIcon size={16} />

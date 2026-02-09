@@ -60,6 +60,7 @@ export function Inbox() {
   const [selectedThreads, setSelectedThreads] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [reilFilters, setReilFilters] = useState<InboxFilters>({});
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   useEffect(() => {
     document.title = TITLE_REIL_SUBVIEW('Inbox');
@@ -70,32 +71,40 @@ export function Inbox() {
     if (USE_INBOX_SEED_DATA) {
       setThreads(SEED_THREADS);
       setViewState('default');
+      setIsDemoMode(true);
       return;
     }
     if (USE_REIL_CORE_INBOX) {
       setViewState('loading');
       fetchReilInboxItems(reilFilters).then(({ items, error }) => {
         if (error) {
-          setReilItems([]);
-          setViewState('error');
+          // Demo safe mode: show fallback UI instead of hard error
+          const demoItems = seedThreadsAsReilItems();
+          setReilItems(demoItems);
+          setViewState(demoItems.length === 0 ? 'empty' : 'default');
+          setIsDemoMode(true);
           return;
         }
         // Live mode: prefer DAL (Gmail) rows; if none, fall back to seed (ENGDEL-REIL-UI-LIVE-SWITCH-0027).
         const displayItems = items.length > 0 ? items : seedThreadsAsReilItems();
         setReilItems(displayItems);
         setViewState(displayItems.length === 0 ? 'empty' : 'default');
+        setIsDemoMode(items.length === 0 && displayItems.length > 0);
       });
       return;
     }
     setViewState('loading');
     fetchThreads().then(({ threads: list, error }) => {
       if (error) {
-        setThreads([]);
-        setViewState('error');
+        // Demo safe mode: show fallback UI instead of hard error
+        setThreads(SEED_THREADS);
+        setViewState('default');
+        setIsDemoMode(true);
         return;
       }
       setThreads(list);
       setViewState(list.length === 0 ? 'empty' : 'default');
+      setIsDemoMode(false);
     });
   }, [USE_REIL_CORE_INBOX, reilFilters.sender, reilFilters.dateFrom, reilFilters.dateTo, reilFilters.type, reilFilters.reviewRequired]);
 
@@ -114,32 +123,53 @@ export function Inbox() {
       setSelectedThreads(USE_REIL_CORE_INBOX ? reilItems.map((i) => i.id) : threads.map((t) => t.id));
     }
   };
+  const loadDemoInbox = () => {
+    if (USE_REIL_CORE_INBOX) {
+      const demoItems = seedThreadsAsReilItems();
+      setReilItems(demoItems);
+      setViewState('default');
+      setIsDemoMode(true);
+    } else {
+      setThreads(SEED_THREADS);
+      setViewState('default');
+      setIsDemoMode(true);
+    }
+  };
+
   const refetch = () => {
     if (USE_INBOX_SEED_DATA) return;
+    setIsDemoMode(false);
     if (USE_REIL_CORE_INBOX) {
       setViewState('loading');
       fetchReilInboxItems(reilFilters).then(({ items, error }) => {
         if (error) {
-          setReilItems([]);
-          setViewState('error');
+          // Demo safe mode: show fallback UI instead of hard error
+          const demoItems = seedThreadsAsReilItems();
+          setReilItems(demoItems);
+          setViewState(demoItems.length === 0 ? 'empty' : 'default');
+          setIsDemoMode(true);
           return;
         }
         // Live mode: prefer DAL (Gmail) rows; if none, fall back to seed (ENGDEL-REIL-UI-LIVE-SWITCH-0027).
         const displayItems = items.length > 0 ? items : seedThreadsAsReilItems();
         setReilItems(displayItems);
         setViewState(displayItems.length === 0 ? 'empty' : 'default');
+        setIsDemoMode(items.length === 0 && displayItems.length > 0);
       });
       return;
     }
     setViewState('loading');
     fetchThreads().then(({ threads: list, error }) => {
       if (error) {
-        setThreads([]);
-        setViewState('error');
+        // Demo safe mode: show fallback UI instead of hard error
+        setThreads(SEED_THREADS);
+        setViewState('default');
+        setIsDemoMode(true);
         return;
       }
       setThreads(list);
       setViewState(list.length === 0 ? 'empty' : 'default');
+      setIsDemoMode(false);
     });
   };
 
@@ -165,9 +195,14 @@ export function Inbox() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary tracking-tight mb-2">
-            Inbox
-          </h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-2xl font-bold text-text-primary tracking-tight">
+              Inbox
+            </h1>
+            {isDemoMode && (
+              <Badge color="neutral" size="sm">Demo data</Badge>
+            )}
+          </div>
           <p className="text-text-secondary">
             Manage email threads and link evidence to records.
           </p>
@@ -350,10 +385,19 @@ export function Inbox() {
           }
 
           {viewState === 'error' &&
-          <ErrorState
-            title="Failed to load inbox"
-            description="We couldn't load threads from the database. Check Supabase config and RLS/auth."
-            onRetry={refetch} />
+          <Card className="p-8 text-center">
+            <div className="max-w-md mx-auto">
+              <h3 className="text-lg font-semibold text-text-primary mb-2">
+                Inbox connector not configured for this demo tenant
+              </h3>
+              <p className="text-text-secondary mb-6">
+                The inbox connector is not available. You can load demo inbox data to explore the interface.
+              </p>
+              <Button variant="primary" onClick={loadDemoInbox}>
+                Load demo inbox
+              </Button>
+            </div>
+          </Card>
 
           }
 
