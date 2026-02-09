@@ -1,0 +1,14 @@
+{"receipt":"oauth_env_sanity","client_id_present":true,"client_secret_present":true,"client_id_redacted":"...tent.com","client_secret_redacted":"[REDACTED]","load_env_selected_file":"C:\\Dev\\10_products\\Q-REIL\\.env.local","missing_canon_keys":["GMAIL_REFRESH_TOKEN","GMAIL_SENDER_ADDRESS"]}
+{
+  "ok": true,
+  "threadsIngested": 33,
+  "messagesIngested": 40,
+  "attachmentsSaved": 2,
+  "sourceItemsRawMessages": 0,
+  "sourceItemsRawAttachments": 0,
+  "documentsCreated": 0,
+  "errors": [],
+  "scanned": 40,
+  "inserted_raw": 0,
+  "inserted_docs": 0
+}

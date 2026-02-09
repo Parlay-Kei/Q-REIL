@@ -21,3 +21,7 @@ dist/
 *.zip
 
 .vercel
+
+# OAuth credentials and console output (contain secrets)
+oauth-console-output.txt
+ops/google/
