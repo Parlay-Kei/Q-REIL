@@ -1,0 +1,82 @@
+# PLATOPS-QREIL-VERCEL-REFRESH-TOKEN-UPSERT: Upsert Gmail refresh token to Vercel Production
+# workflow_dispatch. Uses VERCEL_TOKEN and GMAIL_REFRESH_TOKEN secret.
+
+name: Q REIL Vercel Refresh Token Upsert
+
+on:
+  workflow_dispatch:
+
+jobs:
+  upsert-refresh-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Upsert GMAIL_REFRESH_TOKEN to Vercel Production
+        id: upsert-token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          echo "::add-mask::$REFRESH_TOKEN"
+          
+          # Check if key exists
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          EXISTING=$(echo "$RESP" | jq -r --arg k "GMAIL_REFRESH_TOKEN" '[.envs[] | select(.key == $k)] | .[0]')
+          
+          if [ "$EXISTING" != "null" ] && [ -n "$EXISTING" ]; then
+            ENV_ID=$(echo "$EXISTING" | jq -r '.id')
+            # Update existing
+            HTTP=$(curl -sS -w "%{http_code}" -o /tmp/update_out -X PATCH \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"GMAIL_REFRESH_TOKEN\",\"value\":\"${REFRESH_TOKEN}\",\"target\":[\"production\"],\"type\":\"encrypted\"}" \
+              "https://api.vercel.com/v9/projects/${PROJECT_ID}/env/${ENV_ID}?teamId=${TEAM_ID}")
+            if [ "$HTTP" = "200" ]; then
+              echo "ACTION=updated" >> $GITHUB_OUTPUT
+              echo "ENV_ID=${ENV_ID}" >> $GITHUB_OUTPUT
+            else
+              echo "ACTION=failed" >> $GITHUB_OUTPUT
+              echo "HTTP_CODE=${HTTP}" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          else
+            # Create new
+            HTTP=$(curl -sS -w "%{http_code}" -o /tmp/create_out -X POST \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"key\":\"GMAIL_REFRESH_TOKEN\",\"value\":\"${REFRESH_TOKEN}\",\"target\":[\"production\"],\"type\":\"encrypted\"}" \
+              "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+            if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
+              ENV_ID=$(cat /tmp/create_out | jq -r '.uid // .id')
+              echo "ACTION=created" >> $GITHUB_OUTPUT
+              echo "ENV_ID=${ENV_ID}" >> $GITHUB_OUTPUT
+            else
+              echo "ACTION=failed" >> $GITHUB_OUTPUT
+              echo "HTTP_CODE=${HTTP}" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+          fi
+
+      - name: Verify token exists
+        id: verify-token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -e
+          PROJECT_ID="prj_VAiSllyEk27tnHDXagBt88h0h64j"
+          TEAM_ID="team_DLPOODpWbIp8OubK6ngvbM1v"
+          
+          RESP=$(curl -sS -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v10/projects/${PROJECT_ID}/env?teamId=${TEAM_ID}")
+          
+          TOKEN_EXISTS=$(echo "$RESP" | jq -r '[.envs[] | select(.key == "GMAIL_REFRESH_TOKEN") | select(.target[]? == "production")] | length')
+          
+          echo "TOKEN_EXISTS=${TOKEN_EXISTS}" >> $GITHUB_OUTPUT
+          
+          if [ "$TOKEN_EXISTS" = "0" ]; then
+            echo "Verification failed: Token not found in Production"
+            exit 1
+          fi
