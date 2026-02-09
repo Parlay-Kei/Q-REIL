@@ -94,7 +94,7 @@
 
 | Secret Name | Purpose | Status |
 |-------------|---------|--------|
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-side RLS bypass for ingestion and admin operations | ❌ **MISSING** |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-side RLS bypass for ingestion and admin operations | ❌ **MISSING** (must be obtained from Supabase Dashboard) |
 
 ---
 
