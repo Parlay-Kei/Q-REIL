@@ -1,18 +1,23 @@
 #!/usr/bin/env node
 /**
- * OPS-901 one-time Gmail OAuth via Playwright — for indefinite agent use.
+ * OPS-901 one-time Gmail OAuth — for indefinite agent use.
  *
- * Runs a local callback server and opens a browser (Playwright) to complete
+ * Runs a local callback server and opens the system default browser to complete
  * Google sign-in once. Saves refresh_token (and access_token) to .tokens.json
  * so the app or agent can use refresh_token indefinitely without user interaction.
  *
+ * Hardened for Mission 0015:
+ *   - Forces endpoint to https://accounts.google.com/o/oauth2/v2/auth
+ *   - Forces redirect_uri to http://127.0.0.1:8765/callback (fallback: http://localhost:8765/callback)
+ *   - Uses system default browser (avoids webviews that trigger "browser may not be secure")
+ *   - Always prints auth URL to console
+ *
  * Prerequisites:
- *   - GCP OAuth client (Web) with redirect URI http://localhost:8765/callback
+ *   - GCP OAuth client (Web) with redirect URI http://127.0.0.1:8765/callback or http://localhost:8765/callback
  *   - GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET (canonical) in env or .env.local. See docs/reil-core/OAUTH_ENV_CANON.md.
  *
  * Usage (from repo root):
- *   cd scripts/oauth-proof && npm install && npm run one-time-auth
- *   Or: node scripts/oauth-proof/one-time-auth.mjs (with env set)
+ *   node scripts/oauth-proof/one-time-auth.mjs (with env set)
  *
  * After one successful run, .tokens.json contains refresh_token for agent use.
  */
@@ -22,7 +27,8 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { chromium } from 'playwright';
+import { exec } from 'child_process';
+import { platform } from 'os';
 import { getGmailOAuthEnv } from '../../connectors/gmail/lib/oauthEnvCanon.js';
 
 function sha256Hex(str) {
@@ -30,7 +36,7 @@ function sha256Hex(str) {
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORTS = [8765, 8766, 8767, 8768, 8769];
+const DEFAULT_PORT = 8765;
 const DEFAULT_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
@@ -45,17 +51,23 @@ function getScopes() {
   return env || DEFAULT_SCOPES;
 }
 
-/** Parse OAUTH_REDIRECT_URI (e.g. http://localhost) into { port, pathPrefix }. */
-function parseRedirectUri(uri) {
-  if (!uri || !uri.trim()) return null;
-  try {
-    const u = new URL(uri.trim());
-    const port = u.port ? Number(u.port) : (u.protocol === 'https:' ? 443 : 80);
-    const pathPrefix = (u.pathname || '/').replace(/\/$/, '') || '';
-    return { port, pathPrefix, href: u.origin + (pathPrefix || '/') };
-  } catch {
-    return null;
+/** Open URL in system default browser (cross-platform). */
+function openBrowser(url) {
+  const plat = platform();
+  let cmd;
+  if (plat === 'win32') {
+    cmd = `start "" "${url}"`;
+  } else if (plat === 'darwin') {
+    cmd = `open "${url}"`;
+  } else {
+    cmd = `xdg-open "${url}"`;
   }
+  exec(cmd, (err) => {
+    if (err) {
+      console.error('Failed to open browser automatically. Please open this URL manually:');
+      console.error(url);
+    }
+  });
 }
 
 function loadEnv() {
@@ -138,13 +150,14 @@ async function exchangeCodeForTokens(code, codeVerifier, clientId, clientSecret,
   return res.json();
 }
 
-function createCallbackServer(port, ctx, pathPrefix = '/callback') {
-  const base = `http://localhost:${port}`;
+function createCallbackServer(port, ctx, pathPrefix = '/callback', use127 = false) {
+  const host = use127 ? '127.0.0.1' : 'localhost';
+  const base = `http://${host}:${port}`;
   const redirectUri = pathPrefix ? `${base}${pathPrefix}` : base.replace(/\/$/, '') || base;
   ctx.redirectUri = redirectUri;
   return new Promise((resolve, reject) => {
     const server = http.createServer(async (req, res) => {
-      const url = new URL(req.url || '', base);
+      const url = new URL(req.url || '', `http://${host}:${port}`);
       const pathname = url.pathname || '/';
       const match = pathPrefix === '' || pathPrefix === '/'
         ? (pathname === '/' || pathname === '')
@@ -215,7 +228,7 @@ function createCallbackServer(port, ctx, pathPrefix = '/callback') {
       server.close();
     });
     server.on('error', reject);
-    server.listen(port, () => resolve(server));
+    server.listen(port, host, () => resolve(server));
   });
 }
 
@@ -244,34 +257,37 @@ async function main() {
     redirectUri: null,
   };
 
-  const customRedirect = parseRedirectUri(process.env.OAUTH_REDIRECT_URI);
   const scopes = getScopes();
   let server;
-  let portUsed;
-
-  if (customRedirect) {
-    portUsed = customRedirect.port;
-    const pathPrefix = customRedirect.pathPrefix === '/' ? '' : customRedirect.pathPrefix;
-    server = await createCallbackServer(portUsed, ctx, pathPrefix);
-    ctx.redirectUri = process.env.OAUTH_REDIRECT_URI.trim();
-  } else {
-    const portEnv = process.env.PROOF_PORT ? [Number(process.env.PROOF_PORT)] : PORTS;
-    for (const port of portEnv) {
+  let redirectUri;
+  let portUsed = DEFAULT_PORT;
+  
+  // Force redirect_uri to http://127.0.0.1:8765/callback with fallback http://localhost:8765/callback
+  // Try 127.0.0.1 first (preferred for Google OAuth security)
+  let use127 = true;
+  try {
+    server = await createCallbackServer(DEFAULT_PORT, ctx, '/callback', use127);
+    redirectUri = `http://127.0.0.1:${DEFAULT_PORT}/callback`;
+  } catch (e) {
+    if (e.code === 'EADDRINUSE') {
+      // Fallback to localhost if 127.0.0.1:8765 is in use
+      use127 = false;
       try {
-        server = await createCallbackServer(port, ctx, '/callback');
-        portUsed = port;
-        break;
-      } catch (e) {
-        if (e.code === 'EADDRINUSE') {
-          if (port === portEnv[portEnv.length - 1]) throw e;
-          continue;
+        server = await createCallbackServer(DEFAULT_PORT, ctx, '/callback', use127);
+        redirectUri = `http://localhost:${DEFAULT_PORT}/callback`;
+      } catch (e2) {
+        if (e2.code === 'EADDRINUSE') {
+          console.error(`Port ${DEFAULT_PORT} is in use. Please free the port and try again.`);
+          process.exit(1);
         }
-        throw e;
+        throw e2;
       }
+    } else {
+      throw e;
     }
   }
 
-  const redirectUri = ctx.redirectUri;
+  // Force endpoint to https://accounts.google.com/o/oauth2/v2/auth
   const authParams = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -285,42 +301,22 @@ async function main() {
   });
   const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${authParams.toString()}`;
 
-  if (customRedirect) {
-    console.log(`Using OAUTH_REDIRECT_URI: ${redirectUri}`);
-  } else if (portUsed !== 8765) {
-    console.log(`Port 8765 in use; using ${portUsed}. Add ${redirectUri} to GCP OAuth client redirect URIs if not already there.`);
-  }
+  // Always print auth URL to console
+  console.log('--- OAuth Authorization URL ---');
+  console.log(authUrl);
+  console.log('---');
   console.log(`Callback server: ${redirectUri}`);
   console.log(`Scopes: ${scopes}`);
-  console.log('Launching browser for one-time sign-in...');
+  console.log('Opening system default browser...');
 
-  // Use installed Chrome or Edge so Google doesn't show "browser may not be secure"
-  const channelEnv = process.env.PW_CHROME_CHANNEL;
-  let browser;
-  for (const channel of channelEnv ? [channelEnv] : ['chrome', 'msedge', undefined]) {
-    try {
-      browser = await chromium.launch({
-        headless: false,
-        channel: channel || undefined,
-      });
-      if (channel) console.log('Using browser:', channel);
-      break;
-    } catch (e) {
-      if (channel === undefined) throw e;
-    }
-  }
-  const page = await browser.newPage();
+  // Open auth URL in system default browser (avoid webviews/Playwright)
+  openBrowser(authUrl);
 
-  try {
-    await page.goto(authUrl, { waitUntil: 'domcontentloaded' });
-    // Wait until callback received and tokens saved (server sets ctx.done)
-    while (!ctx.done) {
-      await new Promise((r) => setTimeout(r, 300));
-    }
-    await new Promise((resolve) => setTimeout(resolve, 500));
-  } finally {
-    await browser.close();
+  // Wait until callback received and tokens saved (server sets ctx.done)
+  while (!ctx.done) {
+    await new Promise((r) => setTimeout(r, 300));
   }
+  await new Promise((resolve) => setTimeout(resolve, 500));
 
   if (ctx.error) {
     console.error('OAuth error:', ctx.error);

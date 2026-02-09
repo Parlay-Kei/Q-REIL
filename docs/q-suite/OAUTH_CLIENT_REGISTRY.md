@@ -14,13 +14,13 @@ See [OPS_901_QSUITE_CANON.md](./OPS_901_QSUITE_CANON.md) for canonical project d
 | Field | Value |
 |-------|--------|
 | **Project (display)** | Q Suite |
-| **Project ID (GCP)** | *(To be set by GCP Admin; document in runbook and optionally here when created.)* |
+| **Project ID (GCP)** | `qreil-486018` |
 | **Client name (exact)** | `q-suite-reil-gmail-connector` |
-| **Client type** | OAuth 2.0 / Web application |
+| **Client type** | OAuth 2.0 / Desktop |
 | **Purpose** | Q REIL Gmail connector: token issuance (proof/one-time-auth), token refresh, sync. |
-| **Authorized redirect URIs** | `http://localhost:8765/callback`, `http://127.0.0.1:8765/callback`; add `http://localhost:<port>/callback` for other proof ports (e.g. 8766–8769, 8770) if used. |
+| **Authorized redirect URIs** | `http://localhost` (Desktop client) |
 | **APIs enabled** | Gmail API |
-| **Env vars (secret store)** | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` — see [OAUTH_ENV_MAP.md](./OAUTH_ENV_MAP.md). |
+| **Env vars (secret store)** | `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` (canonical) — see [OAUTH_ENV_MAP.md](./OAUTH_ENV_MAP.md). Legacy aliases `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` removed per OCS-QREIL-OAUTH-CLIENT-CREATE-0006. |
 | **Status** | Canonical (only entry for Q REIL Gmail OAuth) |
 
 No other OAuth clients are registered for Q REIL Gmail. Use this client only for connector and proof scripts.
